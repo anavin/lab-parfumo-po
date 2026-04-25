@@ -196,9 +196,14 @@ def delete_user(uid):
 
 # --- Categories ---
 def get_categories():
+    """ดึงหมวดทั้งหมด เรียงตาม display_order"""
     try:
         sb = get_supabase()
-        r = sb.table("equipment_categories").select("name").order("created_at").execute()
+        # ลองเรียงตาม display_order ก่อน, fallback created_at
+        try:
+            r = sb.table("equipment_categories").select("name").order("display_order").order("created_at").execute()
+        except Exception:
+            r = sb.table("equipment_categories").select("name").order("created_at").execute()
         cats = [x["name"] for x in r.data]
         if not cats:
             for n in DEFAULT_CATEGORIES:
@@ -209,11 +214,68 @@ def get_categories():
         return DEFAULT_CATEGORIES.copy()
 
 
+def get_categories_with_order():
+    """ดึงหมวด + ลำดับ (สำหรับหน้าจัดการ)"""
+    try:
+        sb = get_supabase()
+        try:
+            r = sb.table("equipment_categories").select("*").order("display_order").order("created_at").execute()
+        except Exception:
+            r = sb.table("equipment_categories").select("*").order("created_at").execute()
+        return r.data or []
+    except Exception:
+        return []
+
+
 def add_category(name):
     try:
-        get_supabase().table("equipment_categories").insert({"name": name}).execute()
+        sb = get_supabase()
+        # หาลำดับสูงสุดแล้วต่อท้าย
+        try:
+            mx = sb.table("equipment_categories").select("display_order").order("display_order", desc=True).limit(1).execute()
+            next_order = (mx.data[0].get("display_order") or 0) + 1 if mx.data else 1
+        except Exception:
+            next_order = 999
+        try:
+            sb.table("equipment_categories").insert({
+                "name": name, "display_order": next_order,
+            }).execute()
+        except Exception:
+            # fallback ถ้ายังไม่มี column
+            sb.table("equipment_categories").insert({"name": name}).execute()
         return True
     except Exception:
+        return False
+
+
+def move_category(name, direction):
+    """เลื่อนหมวดขึ้น/ลง — direction = 'up' หรือ 'down'"""
+    try:
+        sb = get_supabase()
+        # ดึงทั้งหมดเรียงตามลำดับ
+        cats = get_categories_with_order()
+        if not cats:
+            return False
+        idx = next((i for i, c in enumerate(cats) if c['name'] == name), -1)
+        if idx < 0:
+            return False
+        if direction == 'up' and idx == 0:
+            return False  # บนสุดอยู่แล้ว
+        if direction == 'down' and idx == len(cats) - 1:
+            return False  # ล่างสุดอยู่แล้ว
+
+        target_idx = idx - 1 if direction == 'up' else idx + 1
+        a = cats[idx]
+        b = cats[target_idx]
+
+        # สลับ display_order
+        ord_a = a.get('display_order', idx + 1)
+        ord_b = b.get('display_order', target_idx + 1)
+        sb.table("equipment_categories").update({"display_order": ord_b}).eq("id", a['id']).execute()
+        sb.table("equipment_categories").update({"display_order": ord_a}).eq("id", b['id']).execute()
+        return True
+    except Exception as e:
+        st.error(f"ย้ายไม่สำเร็จ: {e}")
         return False
 
 

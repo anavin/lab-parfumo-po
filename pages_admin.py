@@ -33,16 +33,26 @@ def render_equipment():
     with st.expander("📂 จัดการหมวดหมู่"):
         cats = db.get_categories()
 
-        # แสดงหมวดที่มี + ปุ่มแก้/ลบ
+        # แสดงหมวดที่มี + ปุ่มแก้/ลบ + เลื่อนลำดับ
         if cats:
             st.markdown("##### หมวดทั้งหมด")
-            for cat in cats:
+            st.caption("⬆️⬇️ จัดลำดับ • ✏️ แก้ชื่อ • 🗑️ ลบ")
+
+            for i, cat in enumerate(cats):
                 count = db.count_equipment_by_category(cat)
-                cc1, cc2, cc3, cc4 = st.columns([3, 1.5, 1, 1])
+                # 6 columns: [order#, name, count, up, down, edit, del]
+                cc1, cc2, cc3, cc4, cc5, cc6, cc7 = st.columns(
+                    [0.4, 2.6, 1.4, 0.7, 0.7, 0.7, 0.7]
+                )
                 with cc1:
+                    st.markdown(f"<div style='padding-top:6px; "
+                                  f"color:#888; font-size:13px;'>"
+                                  f"#{i + 1}</div>",
+                                  unsafe_allow_html=True)
+                with cc2:
                     edit_cat_key = f'edit_cat_{cat}'
                     if st.session_state.get(edit_cat_key):
-                        new_name = st.text_input(
+                        st.text_input(
                             f"แก้ชื่อ: {cat}",
                             value=cat,
                             key=f'edit_cat_input_{cat}',
@@ -50,12 +60,34 @@ def render_equipment():
                         )
                     else:
                         st.markdown(f"📂 **{cat}**")
-                with cc2:
+                with cc3:
                     if count > 0:
                         st.caption(f"📦 {count} รายการ")
                     else:
                         st.caption("📦 (ว่าง)")
-                with cc3:
+
+                # ⬆️ เลื่อนขึ้น
+                with cc4:
+                    is_first = (i == 0)
+                    if st.button("⬆️", key=f'up_cat_{cat}',
+                                  use_container_width=True,
+                                  disabled=is_first,
+                                  help="เลื่อนขึ้น"):
+                        if db.move_category(cat, 'up'):
+                            st.rerun()
+
+                # ⬇️ เลื่อนลง
+                with cc5:
+                    is_last = (i == len(cats) - 1)
+                    if st.button("⬇️", key=f'down_cat_{cat}',
+                                  use_container_width=True,
+                                  disabled=is_last,
+                                  help="เลื่อนลง"):
+                        if db.move_category(cat, 'down'):
+                            st.rerun()
+
+                # ✏️ แก้ไข / 💾 บันทึก
+                with cc6:
                     edit_cat_key = f'edit_cat_{cat}'
                     if st.session_state.get(edit_cat_key):
                         if st.button("💾", key=f'sv_cat_{cat}',
@@ -79,7 +111,9 @@ def render_equipment():
                                       help="แก้ไข"):
                             st.session_state[edit_cat_key] = True
                             st.rerun()
-                with cc4:
+
+                # 🗑️ ลบ
+                with cc7:
                     del_cat_key = f'del_cat_{cat}'
                     if st.session_state.get(del_cat_key):
                         if st.button("⚠️", key=f'cd_cat_{cat}',
