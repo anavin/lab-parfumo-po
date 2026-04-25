@@ -16,6 +16,16 @@ def render_equipment():
         st.error("เฉพาะแอดมิน")
         return
 
+    # โหมดแก้ไข — แสดง full-width
+    edit_id = st.session_state.get('catalog_edit_id')
+    if edit_id:
+        eq = db.get_equipment(edit_id)
+        if eq:
+            _render_eq_edit_fullwidth(eq)
+            return
+        else:
+            st.session_state.pop('catalog_edit_id', None)
+
     st.markdown("## 📦 จัดการ Catalog สินค้า")
     st.caption("คลังข้อมูลสินค้า/อุปกรณ์ทั้งหมด — ทีมจะใช้สั่งซื้อจากที่นี่")
 
@@ -103,9 +113,6 @@ def _stock_status(stock):
 
 def _render_eq_admin_card(eq):
     """การ์ดอุปกรณ์ในหน้าจัดการ — รองรับหลายรูป + แก้/ลบ"""
-    edit_key = f'ee_{eq["id"]}'
-    is_editing = st.session_state.get(edit_key, False)
-
     # รวม image_urls + image_url (legacy) เป็น list
     images = list(eq.get('image_urls') or [])
     if eq.get('image_url') and eq['image_url'] not in images:
@@ -176,9 +183,8 @@ def _render_eq_admin_card(eq):
         bc1, bc2 = st.columns(2)
         with bc1:
             if st.button("✏️ แก้ไข", key=f"e_{eq['id']}",
-                         use_container_width=True,
-                         type="primary" if is_editing else "secondary"):
-                st.session_state[edit_key] = not is_editing
+                         use_container_width=True, type="primary"):
+                st.session_state['catalog_edit_id'] = eq['id']
                 st.rerun()
         with bc2:
             del_key = f'cd_{eq["id"]}'
@@ -194,88 +200,167 @@ def _render_eq_admin_card(eq):
                     st.session_state[del_key] = True
                     st.rerun()
 
-    # ---- Edit form ----
-    if is_editing:
-        st.markdown(f"#### ✏️ แก้ไข: {eq.get('name', '')}")
 
-        # ===== จัดการรูปภาพ (นอก form เพื่อให้ลบรูปได้ทันที) =====
-        st.markdown("##### 🖼️ รูปภาพ")
-        if images:
-            st.caption(f"มี {len(images)} รูป — กด 🗑️ เพื่อลบรูปแต่ละรูป")
-            img_cols = st.columns(4)
-            for i, url in enumerate(images):
-                with img_cols[i % 4]:
-                    try:
-                        st.image(url, use_container_width=True)
-                    except Exception:
-                        st.markdown("🖼️")
-                    if st.button("🗑️ ลบรูปนี้", key=f"rmimg_{eq['id']}_{i}",
-                                  use_container_width=True):
-                        db.remove_equipment_image(eq['id'], url)
-                        st.success("ลบรูปแล้ว")
-                        st.rerun()
-        else:
-            st.caption("ยังไม่มีรูป — เพิ่มได้ที่ด้านล่าง")
+def _render_eq_edit_fullwidth(eq):
+    """หน้าแก้ไข Catalog แบบเต็มจอ — สวย + ใช้งานง่าย"""
+    # รวมรูปทั้งหมด
+    images = list(eq.get('image_urls') or [])
+    if eq.get('image_url') and eq['image_url'] not in images:
+        images.insert(0, eq['image_url'])
 
-        # อัปโหลดรูปเพิ่ม
-        new_imgs = st.file_uploader(
-            "➕ เพิ่มรูปใหม่ (อัปโหลดได้หลายรูป)",
-            type=['jpg', 'jpeg', 'png', 'webp'],
-            key=f"img_{eq['id']}",
-            accept_multiple_files=True,
+    # ===== Header + ปุ่มกลับ =====
+    hc1, hc2 = st.columns([6, 1])
+    with hc1:
+        st.markdown(f"## ✏️ แก้ไข Catalog")
+        st.caption(f"กำลังแก้ไข: **{eq.get('name', '-')}**")
+    with hc2:
+        if st.button("← กลับ", use_container_width=True, type="secondary"):
+            st.session_state.pop('catalog_edit_id', None)
+            st.rerun()
+
+    st.divider()
+
+    # ===== Section 1: รูปภาพ =====
+    st.markdown("### 🖼️ รูปภาพสินค้า")
+
+    if images:
+        st.caption(f"มี **{len(images)} รูป** — รูปแรกจะใช้แสดงเป็นรูปหลัก  •  กด 🗑️ เพื่อลบรูป")
+
+        # แสดงรูป 4 ใบ/แถว ขนาดใหญ่
+        for row_start in range(0, len(images), 4):
+            row = images[row_start:row_start + 4]
+            cols = st.columns(4)
+            for i, url in enumerate(row):
+                actual_i = row_start + i
+                with cols[i]:
+                    with st.container(border=True):
+                        try:
+                            st.image(url, use_container_width=True)
+                        except Exception:
+                            st.markdown("🖼️ (โหลดไม่ได้)")
+
+                        # Badge "รูปหลัก"
+                        if actual_i == 0:
+                            st.markdown(
+                                '<div style="text-align:center; '
+                                'background:#C8A47E22; color:#C8A47E; '
+                                'padding:3px; border-radius:4px; '
+                                'font-size:11px; font-weight:500; '
+                                'margin-bottom:4px;">⭐ รูปหลัก</div>',
+                                unsafe_allow_html=True,
+                            )
+                        if st.button("🗑️ ลบรูปนี้",
+                                      key=f"rmimg_{eq['id']}_{actual_i}",
+                                      use_container_width=True):
+                            db.remove_equipment_image(eq['id'], url)
+                            st.success("ลบรูปแล้ว")
+                            st.rerun()
+    else:
+        st.info("📷 ยังไม่มีรูป — เพิ่มรูปได้ที่กล่องด้านล่าง")
+
+    # อัปโหลดรูปเพิ่ม
+    st.markdown("#### ➕ เพิ่มรูปใหม่")
+    new_imgs = st.file_uploader(
+        "เลือกรูป (อัปโหลดได้หลายรูปพร้อมกัน — ลากใส่หรือคลิก Browse)",
+        type=['jpg', 'jpeg', 'png', 'webp'],
+        key=f"img_{eq['id']}",
+        accept_multiple_files=True,
+        label_visibility="collapsed",
+    )
+    if new_imgs:
+        upc1, upc2, _ = st.columns([2, 2, 4])
+        with upc1:
+            if st.button(f"⬆️ อัปโหลด {len(new_imgs)} รูป",
+                          key=f"up_{eq['id']}", type="primary",
+                          use_container_width=True):
+                with st.spinner(f"กำลังอัปโหลด {len(new_imgs)} รูป..."):
+                    success = 0
+                    for img in new_imgs:
+                        url = db.upload_image(img.getvalue(), img.name)
+                        if url:
+                            if db.add_equipment_image(eq['id'], url):
+                                success += 1
+                if success:
+                    st.success(f"✅ อัปโหลด {success} รูปแล้ว")
+                    st.rerun()
+        with upc2:
+            st.caption(f"📷 พร้อมอัปโหลด {len(new_imgs)} รูป")
+
+    st.divider()
+
+    # ===== Section 2: ข้อมูลพื้นฐาน =====
+    st.markdown("### 📋 ข้อมูลสินค้า")
+
+    with st.form(f"ef_{eq['id']}"):
+        # Row 1: ชื่อ + SKU
+        r1c1, r1c2 = st.columns([2, 1])
+        with r1c1:
+            n = st.text_input("📛 ชื่อสินค้า *", value=eq['name'])
+        with r1c2:
+            sk = st.text_input("🏷️ SKU", value=eq.get('sku') or '',
+                                placeholder="เช่น LP-BTL-30")
+
+        # Row 2: หมวด + หน่วย
+        r2c1, r2c2 = st.columns(2)
+        with r2c1:
+            cl = db.get_categories()
+            cat = st.selectbox(
+                "📂 หมวดหมู่", cl,
+                index=cl.index(eq['category']) if eq['category'] in cl else 0,
+            )
+        with r2c2:
+            u = st.text_input("📐 หน่วย", value=eq.get('unit', 'ชิ้น'),
+                                placeholder="เช่น ชิ้น, ขวด, กล่อง")
+
+        # Row 3: ต้นทุน + คงเหลือ
+        r3c1, r3c2 = st.columns(2)
+        with r3c1:
+            lc = st.number_input("💰 ราคาต้นทุนล่าสุด (บาท)",
+                                   value=float(eq.get('last_cost', 0)),
+                                   step=1.0, format="%.2f")
+        with r3c2:
+            stk = st.number_input("📦 คงเหลือในสต็อก",
+                                    value=int(eq.get('stock', 0)),
+                                    step=1, format="%d")
+
+        # Description (ใหญ่)
+        d = st.text_area(
+            "📝 รายละเอียด / สเปค",
+            value=eq.get('description', ''),
+            height=120,
+            placeholder="ตัวอย่าง: ขวดแก้วใสทรงสี่เหลี่ยม ความจุ 30 ml. "
+                         "ความกว้าง 56.2 mm ขัดเงา\n"
+                         "เหมาะสำหรับน้ำหอมหรือ essential oil\n"
+                         "Made in Italy",
         )
-        if new_imgs:
-            cu1, cu2 = st.columns([1, 3])
-            with cu1:
-                if st.button(f"⬆️ อัปโหลด {len(new_imgs)} รูป",
-                              key=f"up_{eq['id']}", type="primary"):
-                    with st.spinner("กำลังอัปโหลด..."):
-                        for img in new_imgs:
-                            url = db.upload_image(img.getvalue(), img.name)
-                            if url:
-                                db.add_equipment_image(eq['id'], url)
-                    st.success(f"อัปโหลด {len(new_imgs)} รูปแล้ว")
-                    st.rerun()
 
-        st.markdown("---")
+        st.divider()
 
-        # ===== แก้ไขข้อมูล =====
-        with st.form(f"ef_{eq['id']}"):
-            ec1, ec2 = st.columns(2)
-            with ec1:
-                n = st.text_input("ชื่อ", value=eq['name'])
-                cl = db.get_categories()
-                cat = st.selectbox(
-                    "หมวด", cl,
-                    index=cl.index(eq['category']) if eq['category'] in cl else 0,
-                )
-                sk = st.text_input("SKU", value=eq.get('sku') or '')
-            with ec2:
-                u = st.text_input("หน่วย", value=eq.get('unit', 'ชิ้น'))
-                lc = st.number_input("ต้นทุน",
-                                       value=float(eq.get('last_cost', 0)),
-                                       step=1.0)
-                stk = st.number_input("คงเหลือ",
-                                        value=int(eq.get('stock', 0)),
-                                        step=1)
-            d = st.text_area("รายละเอียด", value=eq.get('description', ''))
+        # ปุ่ม Action
+        s1, s2, s3 = st.columns([1, 1, 2])
+        with s1:
+            saved = st.form_submit_button(
+                "💾 บันทึกการเปลี่ยนแปลง",
+                type="primary", use_container_width=True,
+            )
+        with s2:
+            cancelled = st.form_submit_button(
+                "❌ ยกเลิก",
+                use_container_width=True,
+            )
 
-            s1, s2 = st.columns(2)
-            with s1:
-                if st.form_submit_button("💾 บันทึก", type="primary",
-                                            use_container_width=True):
-                    db.update_equipment(eq['id'],
-                                          name=n, category=cat, sku=sk,
-                                          unit=u, last_cost=lc,
-                                          stock=stk, description=d)
-                    st.session_state.pop(edit_key, None)
-                    st.success("บันทึกแล้ว")
-                    st.rerun()
-            with s2:
-                if st.form_submit_button("❌ ยกเลิก",
-                                            use_container_width=True):
-                    st.session_state.pop(edit_key, None)
-                    st.rerun()
+        if saved:
+            with st.spinner("กำลังบันทึก..."):
+                db.update_equipment(eq['id'],
+                                      name=n, category=cat, sku=sk,
+                                      unit=u, last_cost=lc,
+                                      stock=stk, description=d)
+            st.success("✅ บันทึกเรียบร้อย")
+            st.session_state.pop('catalog_edit_id', None)
+            st.rerun()
+        elif cancelled:
+            st.session_state.pop('catalog_edit_id', None)
+            st.rerun()
 
 
 # ==================================================================

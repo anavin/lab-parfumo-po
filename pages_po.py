@@ -463,7 +463,12 @@ def _render_eq_card(eq, is_selected):
     border_width = "2px" if is_selected else "1px"
     bg = "#2a2520" if is_selected else "#252525"
 
+    # ใช้รูปหลัก (image_url) — ถ้าไม่มี fallback ไป image_urls[0]
     image_url = eq.get('image_url')
+    if not image_url:
+        urls = eq.get('image_urls') or []
+        if urls:
+            image_url = urls[0]
     name = eq.get('name', '-')
     sku = eq.get('sku') or '-'
     unit = eq.get('unit', 'ชิ้น')
@@ -841,11 +846,18 @@ def _render_item_row(item, idx, eq_map, po_id):
         # แถวบน: รูป + ชื่อ + จำนวน + ราคา + ปุ่มดู
         cols = st.columns([0.6, 4, 1.5, 2, 1])
 
-        # รูป
+        # รูป (thumbnail — ใช้รูปหลัก หรือ fallback image_urls[0])
         with cols[0]:
-            if eq and eq.get('image_url'):
+            thumb = None
+            if eq:
+                thumb = eq.get('image_url')
+                if not thumb:
+                    urls = eq.get('image_urls') or []
+                    if urls:
+                        thumb = urls[0]
+            if thumb:
                 try:
-                    st.image(eq['image_url'], width=50)
+                    st.image(thumb, width=50)
                 except Exception:
                     st.markdown("🧴")
             else:
@@ -898,13 +910,23 @@ def _render_item_row(item, idx, eq_map, po_id):
         # Detail expanded section
         if eq and st.session_state.get(detail_key):
             st.markdown("---")
+
+            # รวมรูปทั้งหมด (image_urls + image_url legacy)
+            eq_images = list(eq.get('image_urls') or [])
+            if eq.get('image_url') and eq['image_url'] not in eq_images:
+                eq_images.insert(0, eq['image_url'])
+
             dc1, dc2 = st.columns([1, 2])
             with dc1:
-                if eq.get('image_url'):
+                # รูปหลัก (รูปแรก)
+                if eq_images:
                     try:
-                        st.image(eq['image_url'], use_container_width=True)
+                        st.image(eq_images[0], use_container_width=True)
                     except Exception:
                         pass
+                else:
+                    st.markdown('<div style="font-size:64px; text-align:center;">🧴</div>',
+                                  unsafe_allow_html=True)
             with dc2:
                 st.markdown(f"### {eq.get('name', '-')}")
                 st.caption(f"📦 SKU: **{eq.get('sku') or '-'}**")
@@ -941,6 +963,25 @@ def _render_item_row(item, idx, eq_map, po_id):
                 if eq.get('description'):
                     st.markdown("**📝 รายละเอียด:**")
                     st.write(eq['description'])
+
+            # ===== Gallery รูปเพิ่มเติม (ถ้ามีมากกว่า 1 รูป) =====
+            if len(eq_images) > 1:
+                st.markdown(f"#### 🖼️ รูปทั้งหมด ({len(eq_images)} รูป)")
+                # แสดง 4 รูป/แถว
+                for row_start in range(0, len(eq_images), 4):
+                    row = eq_images[row_start:row_start + 4]
+                    img_cols = st.columns(4)
+                    for i, url in enumerate(row):
+                        actual_i = row_start + i
+                        with img_cols[i]:
+                            try:
+                                st.image(url, use_container_width=True)
+                                if actual_i == 0:
+                                    st.caption("⭐ รูปหลัก")
+                                else:
+                                    st.caption(f"รูปที่ {actual_i + 1}")
+                            except Exception:
+                                st.markdown("🖼️ (โหลดไม่ได้)")
 
 
 def render_progress_bar(current_status):
