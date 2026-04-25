@@ -724,6 +724,46 @@ def get_low_stock_equipment(threshold=10):
         return []
 
 
+# ===== Draft PO (Auto-save) =====
+def save_po_draft(user_id, items, notes=""):
+    """บันทึก draft PO — มีได้ 1 ใบต่อ user (upsert)"""
+    try:
+        sb = get_supabase()
+        # เช็คว่ามี draft อยู่แล้วไหม
+        existing = sb.table("po_drafts").select("id").eq("user_id", user_id).execute()
+        payload = {
+            "user_id": user_id,
+            "items": items,
+            "notes": notes,
+            "updated_at": datetime.now().isoformat(),
+        }
+        if existing.data:
+            sb.table("po_drafts").update(payload).eq("user_id", user_id).execute()
+        else:
+            sb.table("po_drafts").insert(payload).execute()
+        return True
+    except Exception:
+        return False
+
+
+def get_po_draft(user_id):
+    """ดึง draft ล่าสุดของ user"""
+    try:
+        r = get_supabase().table("po_drafts").select("*").eq("user_id", user_id).execute()
+        return r.data[0] if r.data else None
+    except Exception:
+        return None
+
+
+def delete_po_draft(user_id):
+    """ลบ draft (หลัง submit แล้ว)"""
+    try:
+        get_supabase().table("po_drafts").delete().eq("user_id", user_id).execute()
+        return True
+    except Exception:
+        return False
+
+
 def update_po_procurement(po_id, supplier_name, supplier_contact, items_with_prices,
                            discount=0, shipping_fee=0, vat=0, expected_date=None,
                            procurement_notes="", user_name=""):

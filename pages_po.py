@@ -311,8 +311,35 @@ def render_po_list():
 def render_po_create():
     user = current_user()
 
+    # ===== Load Draft (ครั้งแรกเข้าหน้า) =====
+    draft_loaded_key = f'_draft_loaded_{uid()}'
+    if not st.session_state.get(draft_loaded_key):
+        draft = db.get_po_draft(uid())
+        if draft and draft.get('items'):
+            # โหลด draft → set ใน session
+            st.session_state['po_items'] = draft['items']
+            if draft.get('notes'):
+                st.session_state['po_create_notes'] = draft['notes']
+        st.session_state[draft_loaded_key] = True
+
     st.markdown("## ➕ สร้างใบสั่งซื้อใหม่")
     st.caption("กรอกความต้องการ — แอดมินจะเป็นคนติดต่อ supplier")
+
+    # แจ้งว่ามี draft กำลังเปิดอยู่
+    if st.session_state.get('po_items'):
+        c1, c2 = st.columns([5, 1])
+        with c1:
+            st.info(f"💾 **กำลังร่าง:** มี {len(st.session_state['po_items'])} รายการ "
+                     f"— บันทึกอัตโนมัติเมื่อกด เพิ่ม/ลบ/แก้ไขจำนวน")
+        with c2:
+            if st.button("🗑️ ล้าง", help="ลบ draft + เริ่มใหม่",
+                          use_container_width=True):
+                db.delete_po_draft(uid())
+                st.session_state['po_items'] = []
+                st.session_state['po_create_notes'] = ''
+                st.session_state[draft_loaded_key] = True
+                st.success("ล้างแล้ว")
+                st.rerun()
 
     if st.button("← กลับ"):
         st.session_state['mode'] = 'po_list'
@@ -400,6 +427,8 @@ def render_po_create():
                         'qty': int(custom_qty),
                         'notes': custom_note,
                     })
+                    db.save_po_draft(uid(), st.session_state['po_items'],
+                                       st.session_state.get('po_create_notes', ''))
                     st.rerun()
 
     # ===== รายการที่เลือก =====
@@ -429,7 +458,11 @@ def render_po_create():
                         created_by_name=uname(),
                     )
                     if new_po:
+                        # ลบ draft + reset
+                        db.delete_po_draft(uid())
                         st.session_state['po_items'] = []
+                        st.session_state['po_create_notes'] = ''
+                        st.session_state.pop(f'_draft_loaded_{uid()}', None)
                         st.session_state['view_po_id'] = new_po['id']
                         st.session_state['mode'] = 'po_view'
                         st.success(f"🎉 บันทึกใบ {new_po['po_number']} แล้ว")
@@ -450,7 +483,7 @@ def _stock_indicator(stock):
 
 def _render_eq_card(eq, is_selected):
     """แสดงการ์ดอุปกรณ์ + ปุ่มเพิ่ม/ลบ — square images + uniform height"""
-    border_color = "#C8A47E" if is_selected else "#444"
+    border_color = "#4A6FA5" if is_selected else "#444"
     border_width = "2px" if is_selected else "1px"
     bg = "#2a2520" if is_selected else "#252525"
 
@@ -580,6 +613,8 @@ def _render_eq_card(eq, is_selected):
                     it for it in st.session_state['po_items']
                     if it.get('equipment_id') != eq['id']
                 ]
+                db.save_po_draft(uid(), st.session_state['po_items'],
+                                   st.session_state.get('po_create_notes', ''))
                 st.rerun()
         else:
             if st.button("➕ เพิ่ม", key=f"card_{eq['id']}",
@@ -591,6 +626,8 @@ def _render_eq_card(eq, is_selected):
                     'qty': 1,
                     'notes': '',
                 })
+                db.save_po_draft(uid(), st.session_state['po_items'],
+                                   st.session_state.get('po_create_notes', ''))
                 st.rerun()
 
 
@@ -630,6 +667,8 @@ def _render_selected_items(eq_list):
                     if st.button("➖", key=f"dec_{i}",
                                  disabled=item['qty'] <= 1):
                         st.session_state['po_items'][i]['qty'] -= 1
+                        db.save_po_draft(uid(), st.session_state['po_items'],
+                                           st.session_state.get('po_create_notes', ''))
                         st.rerun()
                 with qc2:
                     new_qty = st.number_input(
@@ -642,10 +681,14 @@ def _render_selected_items(eq_list):
                     )
                     if new_qty != item['qty']:
                         st.session_state['po_items'][i]['qty'] = int(new_qty)
+                        db.save_po_draft(uid(), st.session_state['po_items'],
+                                           st.session_state.get('po_create_notes', ''))
                         st.rerun()
                 with qc3:
                     if st.button("➕", key=f"inc_{i}"):
                         st.session_state['po_items'][i]['qty'] += 1
+                        db.save_po_draft(uid(), st.session_state['po_items'],
+                                           st.session_state.get('po_create_notes', ''))
                         st.rerun()
 
             # หน่วย
@@ -661,6 +704,8 @@ def _render_selected_items(eq_list):
                 if st.button("🗑️", key=f"del_{i}",
                              help="ลบออกจากรายการ"):
                     st.session_state['po_items'].pop(i)
+                    db.save_po_draft(uid(), st.session_state['po_items'],
+                                       st.session_state.get('po_create_notes', ''))
                     st.rerun()
 
 
@@ -928,7 +973,7 @@ def _render_item_row(item, idx, eq_map, po_id):
                         f"<div style='text-align:right; padding-top:8px;'>"
                         f"<span style='color:#888; font-size:11px;'>"
                         f"@฿{price:,.2f}</span><br>"
-                        f"<b style='color:#C8A47E;'>฿{subtotal:,.2f}</b>"
+                        f"<b style='color:#4A6FA5;'>฿{subtotal:,.2f}</b>"
                         f"</div>",
                         unsafe_allow_html=True,
                     )
@@ -993,7 +1038,7 @@ def _render_item_row(item, idx, eq_map, po_id):
                     if is_admin():
                         st.markdown(
                             f'💰 <b>ต้นทุนล่าสุด:</b> '
-                            f'<span style="color:#C8A47E;">'
+                            f'<span style="color:#4A6FA5;">'
                             f'฿{eq.get("last_cost", 0):,.2f}</span>',
                             unsafe_allow_html=True,
                         )
@@ -1056,7 +1101,7 @@ def render_progress_bar(current_status):
                 bg, color, prefix = "#E1F5EE", "#0F6E56", "✓"
             elif i == cur_idx:
                 from helpers import STATUS_COLOR, STATUS_EMOJI
-                color = STATUS_COLOR.get(status, '#C8A47E')
+                color = STATUS_COLOR.get(status, '#4A6FA5')
                 bg = color + "33"
                 prefix = STATUS_EMOJI.get(status, '●')
             else:
@@ -1373,19 +1418,21 @@ def render_receive_form(po):
             with cols[1]:
                 qr = st.number_input("ได้รับ",
                                        min_value=0,
-                                       value=int(data[i]['qty_received']),
+                                       value=int(data[i].get('qty_received', item.get('qty', 0))),
                                        step=1,
                                        key=f"qr_{po['id']}_{i}")
             with cols[2]:
                 qd = st.number_input("เสียหาย",
                                        min_value=0,
                                        max_value=qr,
-                                       value=int(data[i]['qty_damaged']),
+                                       value=int(data[i].get('qty_damaged', 0)),
                                        step=1,
                                        key=f"qd_{po['id']}_{i}")
             with cols[3]:
+                # รองรับทั้ง 'item_notes' (legacy) และ 'notes'
+                prev_note = data[i].get('item_notes') or data[i].get('notes', '')
                 inote = st.text_input("หมายเหตุ",
-                                        value=data[i]['item_notes'],
+                                        value=prev_note,
                                         key=f"in_{po['id']}_{i}")
 
             data[i] = {
@@ -1394,6 +1441,7 @@ def render_receive_form(po):
                 'qty_ordered': item.get('qty', 0),
                 'qty_received': qr,
                 'qty_damaged': qd,
+                'item_notes': inote,
                 'notes': inote,
             }
             if qr != item.get('qty', 0) or qd > 0:
@@ -1550,7 +1598,7 @@ def render_attachments(po):
                         st.markdown(
                             f'<a href="{a["url"]}" target="_blank" '
                             f'style="display:inline-block; padding:6px 14px; '
-                            f'background:#C8A47E; color:white; border-radius:4px; '
+                            f'background:#4A6FA5; color:white; border-radius:4px; '
                             f'text-decoration:none; font-size:13px;">'
                             f'⬇️ ดาวน์โหลด</a>',
                             unsafe_allow_html=True,

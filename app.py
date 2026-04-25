@@ -34,17 +34,27 @@ st.markdown("""
     /* ============================================ */
 
     :root {
-        --gold: #C8A47E;
-        --gold-dark: #b08e6a;
-        --gold-light: #E8D4BC;
-        --gold-soft: rgba(200, 164, 126, 0.1);
-        --bg-card: rgba(255, 255, 255, 0.04);
-        --bg-card-hover: rgba(200, 164, 126, 0.08);
-        --border-soft: rgba(200, 164, 126, 0.2);
-        --border-active: rgba(200, 164, 126, 0.5);
-        --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.2);
-        --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
-        --shadow-gold: 0 4px 20px rgba(200, 164, 126, 0.25);
+        --primary: #4A6FA5;
+        --primary-dark: #3A5A8C;
+        --primary-light: #A8C0E0;
+        --primary-soft: rgba(74, 111, 165, 0.08);
+        --bg-page: #FFFFFF;
+        --bg-card: #F4F6FA;
+        --bg-card-hover: rgba(74, 111, 165, 0.06);
+        --border-soft: rgba(74, 111, 165, 0.18);
+        --border-active: rgba(74, 111, 165, 0.5);
+        --text-primary: #1F2937;
+        --text-secondary: #6B7280;
+        --text-muted: #9CA3AF;
+        --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+        --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+        --shadow-blue: 0 4px 16px rgba(74, 111, 165, 0.2);
+        /* legacy aliases for back-compat */
+        --gold: #4A6FA5;
+        --gold-dark: #3A5A8C;
+        --gold-light: #A8C0E0;
+        --gold-soft: rgba(74, 111, 165, 0.08);
+        --shadow-gold: 0 4px 16px rgba(74, 111, 165, 0.2);
     }
 
     /* ----- Headings ----- */
@@ -53,7 +63,7 @@ st.markdown("""
         letter-spacing: 0.3px;
     }
     h1 {
-        background: linear-gradient(135deg, #C8A47E 0%, #E8D4BC 50%, #C8A47E 100%);
+        background: linear-gradient(135deg, #4A6FA5 0%, #A8C0E0 50%, #4A6FA5 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         background-clip: text;
@@ -110,7 +120,7 @@ st.markdown("""
         letter-spacing: -0.5px;
     }
     div[data-testid="stMetricLabel"] {
-        color: rgba(232, 212, 188, 0.7) !important;
+        color: rgba(168, 192, 224, 0.7) !important;
         font-weight: 400 !important;
     }
 
@@ -174,7 +184,7 @@ st.markdown("""
         margin-bottom: 8px;
     }
     .empty-text {
-        color: rgba(232, 212, 188, 0.7);
+        color: rgba(168, 192, 224, 0.7);
         font-size: 14px;
         max-width: 400px;
         margin: 0 auto 16px;
@@ -217,7 +227,7 @@ st.markdown("""
     .brand-name {
         font-size: 22px;
         font-weight: 600;
-        background: linear-gradient(135deg, #C8A47E 0%, #E8D4BC 100%);
+        background: linear-gradient(135deg, #4A6FA5 0%, #A8C0E0 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         background-clip: text;
@@ -249,7 +259,7 @@ st.markdown("""
     .login-title {
         font-size: 32px;
         font-weight: 600;
-        background: linear-gradient(135deg, #C8A47E 0%, #E8D4BC 100%);
+        background: linear-gradient(135deg, #4A6FA5 0%, #A8C0E0 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         background-clip: text;
@@ -258,7 +268,7 @@ st.markdown("""
     }
     .login-subtitle {
         font-size: 14px;
-        color: rgba(232, 212, 188, 0.7);
+        color: rgba(168, 192, 224, 0.7);
         letter-spacing: 0.5px;
     }
 
@@ -491,7 +501,7 @@ def render_header():
             <div class="brand-logo">📦</div>
             <div>
                 <div class="brand-name">Lab Parfumo</div>
-                <div style="font-size: 11px; color: rgba(232, 212, 188, 0.6); letter-spacing: 0.5px; margin-top: -2px;">
+                <div style="font-size: 11px; color: rgba(168, 192, 224, 0.6); letter-spacing: 0.5px; margin-top: -2px;">
                     {emoji} {user['full_name']} • {role_label}
                 </div>
             </div>
@@ -524,7 +534,13 @@ def render_header():
     with c3:
         notifs = db.get_notifications(user['id'], unread_only=True)
         nb = f"🔔 ({len(notifs)})" if notifs else "🔔"
-        nc1, nc2 = st.columns(2)
+        nc0, nc1, nc2 = st.columns(3)
+        with nc0:
+            if st.button("🔍", use_container_width=True,
+                         help="ค้นหา (Cmd+K)",
+                         key="open_search"):
+                st.session_state['show_search'] = not st.session_state.get('show_search', False)
+                st.rerun()
         with nc1:
             if st.button(nb, use_container_width=True,
                          type="primary" if notifs else "secondary"):
@@ -550,6 +566,93 @@ def render_header():
                 init_session()
                 st.rerun()
     st.divider()
+
+
+# ==================================================================
+# Global Search Panel
+# ==================================================================
+
+def render_search_panel():
+    """ค้นหา PO + Equipment + Categories — เปิดด้วยปุ่ม 🔍 ใน header"""
+    if not st.session_state.get('show_search'):
+        return
+
+    with st.container(border=True):
+        c1, c2 = st.columns([8, 1])
+        with c1:
+            q = st.text_input(
+                "🔍 ค้นหา PO หมายเลข, ชื่อสินค้า, SKU, Supplier",
+                placeholder="พิมพ์เพื่อค้นหา... (เช่น PO-2025, ขวด, supplier)",
+                key="global_search_input",
+                label_visibility="collapsed",
+            ).strip().lower()
+        with c2:
+            if st.button("✕", use_container_width=True, help="ปิด"):
+                st.session_state['show_search'] = False
+                st.session_state.pop('global_search_input', None)
+                st.rerun()
+
+        if not q:
+            st.caption("💡 ค้นจาก: หมายเลข PO, ชื่อสินค้า, SKU, ชื่อ supplier")
+            return
+
+        # ค้น PO
+        all_pos = db.get_purchase_orders(user_id=uid()) if not is_admin() else db.get_purchase_orders()
+        matched_pos = [
+            p for p in all_pos
+            if q in (p.get('po_number') or '').lower()
+            or q in (p.get('supplier_name') or '').lower()
+            or q in (p.get('created_by_name') or '').lower()
+            or any(q in (it.get('name') or '').lower() for it in (p.get('items') or []))
+        ][:10]
+
+        # ค้น Equipment
+        all_eq = db.get_equipment_list(active_only=True)
+        matched_eq = [
+            e for e in all_eq
+            if q in (e.get('name') or '').lower()
+            or q in (e.get('sku') or '').lower()
+            or q in (e.get('category') or '').lower()
+        ][:10]
+
+        # แสดงผล
+        total = len(matched_pos) + len(matched_eq)
+        if total == 0:
+            st.warning(f"ไม่พบรายการที่ตรงกับ '{q}'")
+            return
+
+        st.caption(f"พบ **{total}** รายการ")
+
+        if matched_pos:
+            st.markdown("##### 📝 ใบ PO")
+            for p in matched_pos:
+                emoji = STATUS_EMOJI.get(p['status'], '')
+                if st.button(
+                    f"{emoji} **{p['po_number']}** — {p.get('supplier_name') or 'รอ supplier'} • {len(p.get('items') or [])} รายการ",
+                    key=f"sr_po_{p['id']}",
+                    use_container_width=True,
+                ):
+                    st.session_state['mode'] = 'po_view'
+                    st.session_state['view_po_id'] = p['id']
+                    st.session_state['show_search'] = False
+                    st.session_state.pop('global_search_input', None)
+                    st.rerun()
+
+        if matched_eq and is_admin():
+            st.markdown("##### 📦 สินค้าใน Catalog")
+            for e in matched_eq:
+                stock = e.get('stock', 0)
+                stock_emoji = "🔴" if stock == 0 else "🟡" if stock < 10 else "🟢"
+                if st.button(
+                    f"{stock_emoji} **{e['name']}** — SKU: {e.get('sku') or '-'} • {e.get('category', '-')}",
+                    key=f"sr_eq_{e['id']}",
+                    use_container_width=True,
+                ):
+                    st.session_state['mode'] = 'equipment'
+                    st.session_state['catalog_edit_id'] = e['id']
+                    st.session_state['show_search'] = False
+                    st.session_state.pop('global_search_input', None)
+                    st.rerun()
 
 
 # ==================================================================
@@ -648,6 +751,126 @@ def render_dashboard():
             st.session_state['po_list_filter'] = filter_status
         st.rerun()
 
+    # ===== Quick Stats — Insights แบบเร็ว =====
+    if is_adm:
+        try:
+            from collections import Counter
+
+            # คำนวณ insights
+            now = datetime.now()
+            this_month_pos = [p for p in pos
+                              if p.get('status') in ('รับของแล้ว', 'เสร็จสมบูรณ์')
+                              and p.get('received_date')
+                              and datetime.fromisoformat(p['received_date'].replace('Z', '+00:00')).replace(tzinfo=None).month == now.month
+                              and datetime.fromisoformat(p['received_date'].replace('Z', '+00:00')).replace(tzinfo=None).year == now.year]
+            last_month = (now.replace(day=1) - timedelta(days=1))
+            last_month_pos = [p for p in pos
+                              if p.get('status') in ('รับของแล้ว', 'เสร็จสมบูรณ์')
+                              and p.get('received_date')
+                              and datetime.fromisoformat(p['received_date'].replace('Z', '+00:00')).replace(tzinfo=None).month == last_month.month
+                              and datetime.fromisoformat(p['received_date'].replace('Z', '+00:00')).replace(tzinfo=None).year == last_month.year]
+
+            this_total = sum(p.get('total_amount', 0) or 0 for p in this_month_pos)
+            last_total = sum(p.get('total_amount', 0) or 0 for p in last_month_pos)
+            growth = ((this_total - last_total) / last_total * 100) if last_total else 0
+
+            # Top supplier
+            supplier_amounts = {}
+            for p in pos:
+                if p.get('supplier_name') and p.get('total_amount'):
+                    supplier_amounts[p['supplier_name']] = supplier_amounts.get(p['supplier_name'], 0) + p['total_amount']
+            top_supplier = max(supplier_amounts.items(), key=lambda x: x[1]) if supplier_amounts else None
+            total_amount_all = sum(supplier_amounts.values()) or 1
+            top_pct = (top_supplier[1] / total_amount_all * 100) if top_supplier else 0
+
+            # PO ค้างนานสุด
+            today = datetime.now()
+            longest_pending = None
+            longest_days = 0
+            for p in pos:
+                if p['status'] in ('รอจัดซื้อดำเนินการ', 'สั่งซื้อแล้ว', 'กำลังขนส่ง'):
+                    try:
+                        created = datetime.fromisoformat(p['created_at'].replace('Z', '+00:00')).replace(tzinfo=None)
+                        days = (today - created).days
+                        if days > longest_days:
+                            longest_days = days
+                            longest_pending = p
+                    except Exception:
+                        pass
+
+            st.markdown("##### 💡 Quick Insights")
+            qc1, qc2, qc3 = st.columns(3)
+            with qc1:
+                arrow = "📈" if growth > 0 else "📉" if growth < 0 else "➡️"
+                color = "#1D9E75" if growth > 0 else "#A32D2D" if growth < 0 else "#888"
+                st.markdown(
+                    f'<div style="background:#F4F6FA; padding:14px 16px; '
+                    f'border-radius:10px; border:1px solid rgba(74,111,165,0.15);">'
+                    f'<div style="font-size:11px; color:#6B7280; '
+                    f'text-transform:uppercase; letter-spacing:0.5px;">'
+                    f'💰 ใช้จ่ายเดือนนี้</div>'
+                    f'<div style="font-size:22px; font-weight:600; color:#4A6FA5; '
+                    f'margin-top:4px;">฿{this_total:,.0f}</div>'
+                    f'<div style="font-size:12px; color:{color}; margin-top:2px;">'
+                    f'{arrow} {abs(growth):.0f}% จากเดือนที่แล้ว</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            with qc2:
+                if top_supplier:
+                    name = top_supplier[0]
+                    short_name = name if len(name) <= 20 else name[:18] + "…"
+                    st.markdown(
+                        f'<div style="background:#F4F6FA; padding:14px 16px; '
+                        f'border-radius:10px; border:1px solid rgba(74,111,165,0.15);">'
+                        f'<div style="font-size:11px; color:#6B7280; '
+                        f'text-transform:uppercase; letter-spacing:0.5px;">'
+                        f'🏆 Top Supplier</div>'
+                        f'<div style="font-size:16px; font-weight:600; color:#4A6FA5; '
+                        f'margin-top:4px;" title="{name}">{short_name}</div>'
+                        f'<div style="font-size:12px; color:#6B7280; margin-top:2px;">'
+                        f'{top_pct:.0f}% ของยอด • ฿{top_supplier[1]:,.0f}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(
+                        '<div style="background:#F4F6FA; padding:14px 16px; '
+                        'border-radius:10px; border:1px solid rgba(74,111,165,0.15);">'
+                        '<div style="font-size:11px; color:#6B7280;">🏆 Top Supplier</div>'
+                        '<div style="font-size:14px; color:#9CA3AF; margin-top:8px;">'
+                        'ยังไม่มีข้อมูล</div></div>',
+                        unsafe_allow_html=True,
+                    )
+            with qc3:
+                if longest_pending:
+                    color = "#A32D2D" if longest_days > 14 else "#BA7517" if longest_days > 7 else "#4A6FA5"
+                    st.markdown(
+                        f'<div style="background:#F4F6FA; padding:14px 16px; '
+                        f'border-radius:10px; border:1px solid rgba(74,111,165,0.15);">'
+                        f'<div style="font-size:11px; color:#6B7280; '
+                        f'text-transform:uppercase; letter-spacing:0.5px;">'
+                        f'⏱️ PO ค้างนานสุด</div>'
+                        f'<div style="font-size:22px; font-weight:600; color:{color}; '
+                        f'margin-top:4px;">{longest_days} วัน</div>'
+                        f'<div style="font-size:12px; color:#6B7280; margin-top:2px;">'
+                        f'{longest_pending["po_number"]}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(
+                        '<div style="background:#F4F6FA; padding:14px 16px; '
+                        'border-radius:10px; border:1px solid rgba(74,111,165,0.15);">'
+                        '<div style="font-size:11px; color:#6B7280;">⏱️ PO ค้างนานสุด</div>'
+                        '<div style="font-size:14px; color:#1D9E75; margin-top:8px;">'
+                        '🎉 ไม่มี PO ค้าง</div></div>',
+                        unsafe_allow_html=True,
+                    )
+            st.markdown("<br/>", unsafe_allow_html=True)
+        except Exception:
+            pass
+
     # CSS ทำให้ปุ่ม KPI ดูเหมือน metric card
     st.markdown("""
     <style>
@@ -661,14 +884,14 @@ def render_dashboard():
             align-items: flex-start !important;
             justify-content: center !important;
             background: linear-gradient(135deg, rgba(255,255,255,0.04), transparent) !important;
-            border: 1px solid rgba(200, 164, 126, 0.2) !important;
+            border: 1px solid rgba(74, 111, 165, 0.2) !important;
             transition: all 0.2s ease !important;
         }
         .kpi-button button:hover {
-            border-color: rgba(200, 164, 126, 0.6) !important;
-            background: linear-gradient(135deg, rgba(200, 164, 126, 0.08), transparent) !important;
+            border-color: rgba(74, 111, 165, 0.6) !important;
+            background: linear-gradient(135deg, rgba(74, 111, 165, 0.08), transparent) !important;
             transform: translateY(-2px);
-            box-shadow: 0 4px 16px rgba(200, 164, 126, 0.2) !important;
+            box-shadow: 0 4px 16px rgba(74, 111, 165, 0.2) !important;
         }
         .kpi-button button p {
             line-height: 1.3 !important;
@@ -961,6 +1184,7 @@ def main():
         return
 
     render_header()
+    render_search_panel()
     render_alerts()
 
     mode = st.session_state['mode']
