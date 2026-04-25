@@ -16,7 +16,8 @@ def render_equipment():
         st.error("เฉพาะแอดมิน")
         return
 
-    st.markdown("## 📦 จัดการอุปกรณ์")
+    st.markdown("## 📦 จัดการ Catalog สินค้า")
+    st.caption("คลังข้อมูลสินค้า/อุปกรณ์ทั้งหมด — ทีมจะใช้สั่งซื้อจากที่นี่")
 
     with st.expander("➕ เพิ่มอุปกรณ์ใหม่"):
         with st.form("ae", clear_on_submit=True):
@@ -30,14 +31,26 @@ def render_equipment():
                 lc = st.number_input("ราคาต้นทุนล่าสุด", min_value=0.0, step=1.0)
                 stk = st.number_input("คงเหลือ", min_value=0, step=1, value=0)
             d = st.text_area("รายละเอียด", height=60)
-            img = st.file_uploader("รูป", type=['jpg', 'jpeg', 'png', 'webp'])
+            imgs = st.file_uploader(
+                "รูป (อัปโหลดได้หลายรูป)",
+                type=['jpg', 'jpeg', 'png', 'webp'],
+                accept_multiple_files=True,
+            )
+            if imgs:
+                st.caption(f"📷 จะอัปโหลด {len(imgs)} รูป")
             if st.form_submit_button("✅ เพิ่ม", type="primary"):
                 if not n:
                     st.error("กรุณากรอกชื่อ")
                 else:
-                    iu = db.upload_image(img.getvalue(), img.name) if img else None
-                    db.add_equipment(name=n, category=cat, unit=u, sku=sk,
-                                       description=d, last_cost=lc, stock=stk, image_url=iu)
+                    with st.spinner("กำลังบันทึก..."):
+                        urls = []
+                        for img in (imgs or []):
+                            url = db.upload_image(img.getvalue(), img.name)
+                            if url:
+                                urls.append(url)
+                        db.add_equipment(name=n, category=cat, unit=u, sku=sk,
+                                           description=d, last_cost=lc,
+                                           stock=stk, image_urls=urls)
                     st.success("เพิ่มแล้ว")
                     st.rerun()
 
@@ -89,15 +102,33 @@ def _stock_status(stock):
 
 
 def _render_eq_admin_card(eq):
-    """การ์ดอุปกรณ์ในหน้าจัดการ — มีรูป + ราคา + คงเหลือ + ปุ่มแก้/ลบ"""
+    """การ์ดอุปกรณ์ในหน้าจัดการ — รองรับหลายรูป + แก้/ลบ"""
     edit_key = f'ee_{eq["id"]}'
     is_editing = st.session_state.get(edit_key, False)
 
+    # รวม image_urls + image_url (legacy) เป็น list
+    images = list(eq.get('image_urls') or [])
+    if eq.get('image_url') and eq['image_url'] not in images:
+        images.insert(0, eq['image_url'])
+
     with st.container(border=True):
-        # รูป
-        if eq.get('image_url'):
+        # รูปหลัก + thumbnails
+        if images:
             try:
-                st.image(eq['image_url'], use_container_width=True)
+                st.image(images[0], use_container_width=True)
+                # ถ้ามีหลายรูป แสดง thumbnails
+                if len(images) > 1:
+                    thumb_cols = st.columns(min(len(images), 4))
+                    for i, url in enumerate(images[:4]):
+                        with thumb_cols[i]:
+                            try:
+                                st.image(url, use_container_width=True)
+                            except Exception:
+                                pass
+                    if len(images) > 4:
+                        st.caption(f"📷 และอีก {len(images) - 4} รูป")
+                else:
+                    st.caption(f"📷 1 รูป")
             except Exception:
                 st.markdown(
                     '<div style="background:#333; height:140px; '
@@ -165,8 +196,51 @@ def _render_eq_admin_card(eq):
 
     # ---- Edit form ----
     if is_editing:
+        st.markdown(f"#### ✏️ แก้ไข: {eq.get('name', '')}")
+
+        # ===== จัดการรูปภาพ (นอก form เพื่อให้ลบรูปได้ทันที) =====
+        st.markdown("##### 🖼️ รูปภาพ")
+        if images:
+            st.caption(f"มี {len(images)} รูป — กด 🗑️ เพื่อลบรูปแต่ละรูป")
+            img_cols = st.columns(4)
+            for i, url in enumerate(images):
+                with img_cols[i % 4]:
+                    try:
+                        st.image(url, use_container_width=True)
+                    except Exception:
+                        st.markdown("🖼️")
+                    if st.button("🗑️ ลบรูปนี้", key=f"rmimg_{eq['id']}_{i}",
+                                  use_container_width=True):
+                        db.remove_equipment_image(eq['id'], url)
+                        st.success("ลบรูปแล้ว")
+                        st.rerun()
+        else:
+            st.caption("ยังไม่มีรูป — เพิ่มได้ที่ด้านล่าง")
+
+        # อัปโหลดรูปเพิ่ม
+        new_imgs = st.file_uploader(
+            "➕ เพิ่มรูปใหม่ (อัปโหลดได้หลายรูป)",
+            type=['jpg', 'jpeg', 'png', 'webp'],
+            key=f"img_{eq['id']}",
+            accept_multiple_files=True,
+        )
+        if new_imgs:
+            cu1, cu2 = st.columns([1, 3])
+            with cu1:
+                if st.button(f"⬆️ อัปโหลด {len(new_imgs)} รูป",
+                              key=f"up_{eq['id']}", type="primary"):
+                    with st.spinner("กำลังอัปโหลด..."):
+                        for img in new_imgs:
+                            url = db.upload_image(img.getvalue(), img.name)
+                            if url:
+                                db.add_equipment_image(eq['id'], url)
+                    st.success(f"อัปโหลด {len(new_imgs)} รูปแล้ว")
+                    st.rerun()
+
+        st.markdown("---")
+
+        # ===== แก้ไขข้อมูล =====
         with st.form(f"ef_{eq['id']}"):
-            st.markdown(f"#### ✏️ แก้ไข: {eq.get('name', '')}")
             ec1, ec2 = st.columns(2)
             with ec1:
                 n = st.text_input("ชื่อ", value=eq['name'])
@@ -185,28 +259,17 @@ def _render_eq_admin_card(eq):
                                         value=int(eq.get('stock', 0)),
                                         step=1)
             d = st.text_area("รายละเอียด", value=eq.get('description', ''))
-            new_img = st.file_uploader(
-                "เปลี่ยนรูป (เว้นว่าง = ใช้รูปเดิม)",
-                type=['jpg', 'jpeg', 'png', 'webp'],
-                key=f"img_{eq['id']}",
-            )
+
             s1, s2 = st.columns(2)
             with s1:
                 if st.form_submit_button("💾 บันทึก", type="primary",
                                             use_container_width=True):
-                    update_data = {
-                        'name': n, 'category': cat, 'sku': sk,
-                        'unit': u, 'last_cost': lc,
-                        'stock': stk, 'description': d,
-                    }
-                    if new_img:
-                        new_url = db.upload_image(
-                            new_img.getvalue(), new_img.name,
-                        )
-                        if new_url:
-                            update_data['image_url'] = new_url
-                    db.update_equipment(eq['id'], **update_data)
+                    db.update_equipment(eq['id'],
+                                          name=n, category=cat, sku=sk,
+                                          unit=u, last_cost=lc,
+                                          stock=stk, description=d)
                     st.session_state.pop(edit_key, None)
+                    st.success("บันทึกแล้ว")
                     st.rerun()
             with s2:
                 if st.form_submit_button("❌ ยกเลิก",

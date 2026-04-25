@@ -405,7 +405,7 @@ def render_header():
         modes.append(('pending_receipt', '📦 รอรับของ'))
         if is_admin():
             modes += [
-                ('equipment', '📦 อุปกรณ์'),
+                ('equipment', '📦 Catalog'),
                 ('reports', '📈 รายงาน'),
                 ('users', '👥 ผู้ใช้'),
             ]

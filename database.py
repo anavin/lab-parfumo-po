@@ -346,12 +346,21 @@ def get_equipment(eid):
 
 
 def add_equipment(name, category, unit="ชิ้น", sku="", description="",
-                  last_cost=0, stock=0, image_url=None):
+                  last_cost=0, stock=0, image_url=None, image_urls=None):
     try:
+        # รวม image_url เก่ากับ image_urls ใหม่
+        urls_list = list(image_urls or [])
+        if image_url and image_url not in urls_list:
+            urls_list.insert(0, image_url)
+        # primary image = รูปแรก
+        primary = urls_list[0] if urls_list else None
         return get_supabase().table("equipment").insert({
             "name": name, "category": category, "unit": unit, "sku": sku,
             "description": description, "last_cost": float(last_cost),
-            "stock": int(stock), "image_url": image_url, "is_active": True,
+            "stock": int(stock),
+            "image_url": primary,
+            "image_urls": urls_list,
+            "is_active": True,
         }).execute().data[0]
     except Exception as e:
         st.error(f"เพิ่มไม่สำเร็จ: {e}")
@@ -364,8 +373,43 @@ def update_equipment(eid, **fields):
             fields["last_cost"] = float(fields["last_cost"])
         if "stock" in fields:
             fields["stock"] = int(fields["stock"])
+        # ถ้ามี image_urls ให้ sync image_url (รูปแรก) ด้วย
+        if "image_urls" in fields:
+            urls = fields["image_urls"] or []
+            fields["image_url"] = urls[0] if urls else None
         get_supabase().table("equipment").update(fields).eq("id", eid).execute()
         return True
+    except Exception:
+        return False
+
+
+def add_equipment_image(eid, image_url):
+    """เพิ่มรูปใน array (ไม่ลบของเดิม)"""
+    try:
+        eq = get_equipment(eid)
+        if not eq:
+            return False
+        urls = list(eq.get('image_urls') or [])
+        if eq.get('image_url') and eq['image_url'] not in urls:
+            urls.insert(0, eq['image_url'])
+        if image_url not in urls:
+            urls.append(image_url)
+        return update_equipment(eid, image_urls=urls)
+    except Exception:
+        return False
+
+
+def remove_equipment_image(eid, image_url):
+    """ลบรูป 1 รูปออกจาก array"""
+    try:
+        eq = get_equipment(eid)
+        if not eq:
+            return False
+        urls = list(eq.get('image_urls') or [])
+        if eq.get('image_url') and eq['image_url'] not in urls:
+            urls.insert(0, eq['image_url'])
+        urls = [u for u in urls if u != image_url]
+        return update_equipment(eid, image_urls=urls)
     except Exception:
         return False
 
