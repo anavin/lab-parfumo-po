@@ -1089,7 +1089,7 @@ def _render_item_row(item, idx, eq_map, po_id):
 
 
 def render_progress_bar(current_status):
-    """visual workflow"""
+    """visual workflow — ปรับให้ดูเป็น flow chart ที่อ่านง่าย"""
     main_steps = [
         ("รอจัดซื้อ", "รอจัดซื้อดำเนินการ"),
         ("สั่งแล้ว", "สั่งซื้อแล้ว"),
@@ -1103,8 +1103,9 @@ def render_progress_bar(current_status):
         c = STATUS_COLOR.get(current_status, '#A32D2D')
         e = STATUS_EMOJI.get(current_status, '⚠️')
         st.markdown(
-            f'<div style="padding:10px; background:{c}22; '
-            f'border-left:4px solid {c}; border-radius:4px; margin:8px 0;">'
+            f'<div style="padding:14px 18px; background:{c}15; '
+            f'border-left:4px solid {c}; border-radius:8px; margin:12px 0; '
+            f'font-size:14px; color:{c};">'
             f'<b>{e} สถานะ: {current_status}</b></div>',
             unsafe_allow_html=True,
         )
@@ -1115,25 +1116,34 @@ def render_progress_bar(current_status):
     except StopIteration:
         cur_idx = 0
 
-    cols = st.columns(len(main_steps))
+    # สร้าง progress bar ด้วย HTML เดียว (ไม่ใช้ st.columns) — ป้องกันซ้อนกับปุ่ม
+    html = '<div style="display:flex; gap:6px; margin:12px 0 8px; padding:4px;">'
     for i, (label, status) in enumerate(main_steps):
-        with cols[i]:
-            if i < cur_idx:
-                bg, color, prefix = "#E1F5EE", "#0F6E56", "✓"
-            elif i == cur_idx:
-                from helpers import STATUS_COLOR, STATUS_EMOJI
-                color = STATUS_COLOR.get(status, '#4A6FA5')
-                bg = color + "33"
-                prefix = STATUS_EMOJI.get(status, '●')
-            else:
-                bg, color, prefix = "#F1EFE8", "#888", "○"
+        if i < cur_idx:
+            # ทำเสร็จแล้ว — เขียวเข้ม
+            bg, color, prefix = "#D1FAE5", "#065F46", "✓"
+            border = "1px solid #A7F3D0"
+        elif i == cur_idx:
+            # กำลังทำ — น้ำเงินเข้ม
+            from helpers import STATUS_COLOR, STATUS_EMOJI
+            color = STATUS_COLOR.get(status, '#4A6FA5')
+            bg = color + "1A"
+            prefix = STATUS_EMOJI.get(status, '●')
+            border = f"2px solid {color}"
+        else:
+            # ยังไม่ถึง — เทา
+            bg, color, prefix = "#F3F4F6", "#9CA3AF", "○"
+            border = "1px solid #E5E7EB"
 
-            st.markdown(
-                f'<div style="text-align:center; padding:6px; background:{bg}; '
-                f'border-radius:4px; font-size:11px; color:{color}; font-weight:500;">'
-                f'{prefix} {label}</div>',
-                unsafe_allow_html=True,
-            )
+        html += (
+            f'<div style="flex:1; text-align:center; padding:10px 8px; '
+            f'background:{bg}; border:{border}; border-radius:8px; '
+            f'font-size:12px; color:{color}; font-weight:500;">'
+            f'<div style="font-size:14px; margin-bottom:2px;">{prefix}</div>'
+            f'{label}</div>'
+        )
+    html += '</div>'
+    st.markdown(html, unsafe_allow_html=True)
 
 
 # ==================================================================
@@ -1141,74 +1151,101 @@ def render_progress_bar(current_status):
 # ==================================================================
 
 def render_actions(po):
-    """ปุ่ม action ตาม role + สถานะ"""
+    """ปุ่ม action ตาม role + สถานะ — แสดงเฉพาะที่ใช้งานได้"""
     user = current_user()
     role = user.get('role')
     status = po['status']
     po_id = po['id']
 
-    # PDF download (admin เท่านั้น เพราะมีราคา/supplier)
-    cols = st.columns(7)
+    # ===== สร้างรายการปุ่มที่ใช้งานได้ =====
+    actions = []  # list of (label, type, callback or action_form)
 
-    with cols[0]:
-        try:
-            from pdf_generator import generate_po_pdf
-            pdf_bytes = generate_po_pdf(po, role=role)
-            st.download_button("📥 PDF", data=pdf_bytes,
-                                file_name=f"{po['po_number']}.pdf",
-                                mime="application/pdf",
-                                use_container_width=True, type="primary")
-        except Exception:
-            pass
+    # PDF download — ทุกคนดาวน์โหลดได้ (PDF จะปรับ content ตาม role)
+    actions.append(('pdf', '📥 ดาวน์โหลด PDF', 'primary'))
 
-    # Admin actions
-    if is_admin():
-        with cols[1]:
-            if status == "รอจัดซื้อดำเนินการ":
-                if st.button("🛒 สั่งซื้อ", use_container_width=True):
-                    st.session_state['action_form'] = 'order'
-                    st.rerun()
-        with cols[2]:
-            if status == "สั่งซื้อแล้ว":
-                if st.button("🚚 ขนส่ง", use_container_width=True):
-                    st.session_state['action_form'] = 'ship'
-                    st.rerun()
+    # Admin: สั่งซื้อ
+    if is_admin() and status == "รอจัดซื้อดำเนินการ":
+        actions.append(('order', '🛒 สั่งซื้อ', 'secondary'))
 
-    # Requester (หรือ admin) actions: รับของ — staff รับ PO ใดก็ได้
-    with cols[3]:
-        if status in ('สั่งซื้อแล้ว', 'กำลังขนส่ง'):
-            if st.button("📦 รับของ", use_container_width=True):
-                st.session_state['action_form'] = 'receive'
-                st.rerun()
-    with cols[4]:
-        if status in ('รับของแล้ว', 'มีปัญหา'):
-            if st.button("✔️ ปิดงาน", use_container_width=True):
-                with st.spinner("กำลังปิดงาน..."):
-                    db.update_po_status(po_id, "เสร็จสมบูรณ์", uname(), role,
-                                          "ปิดงาน")
-                st.rerun()
+    # Admin: อัปเดตขนส่ง
+    if is_admin() and status == "สั่งซื้อแล้ว":
+        actions.append(('ship', '🚚 อัปเดตขนส่ง', 'secondary'))
 
-    # 🔁 Clone PO — สั่งซ้ำได้ (ทุกคนใช้ได้กับ PO ของตัวเอง / admin clone ใครก็ได้)
+    # ทุกคน: รับของ
+    if status in ('สั่งซื้อแล้ว', 'กำลังขนส่ง'):
+        actions.append(('receive', '📦 รับของ', 'secondary'))
+
+    # ทุกคน: ปิดงาน
+    if status in ('รับของแล้ว', 'มีปัญหา'):
+        actions.append(('close', '✔️ ปิดงาน', 'secondary'))
+
+    # คัดลอก (admin หรือเจ้าของ)
     can_clone = is_admin() or po.get('created_by') == uid()
     if can_clone:
-        with cols[5]:
-            if st.button("🔁 คัดลอก", use_container_width=True,
-                         help="สั่งซ้ำ — สร้าง PO ใหม่ด้วยรายการเดิม"):
-                with st.spinner("กำลังคัดลอก..."):
-                    new_po = db.clone_purchase_order(po_id, uid(), uname())
-                if new_po:
-                    st.session_state['view_po_id'] = new_po['id']
-                    st.session_state['action_form'] = None
-                    st.success(f"✅ สร้าง {new_po['po_number']} แล้ว")
-                    st.rerun()
+        actions.append(('clone', '🔁 คัดลอก', 'secondary'))
 
-    # Cancel — เฉพาะ admin หรือเจ้าของ PO
+    # ยกเลิก (admin หรือเจ้าของ + ยังไม่ปิดงาน)
     if status not in ('เสร็จสมบูรณ์', 'ยกเลิก'):
-        with cols[6]:
-            if (role == 'requester' and po.get('created_by') == uid()) or is_admin():
-                if st.button("❌ ยกเลิก", use_container_width=True):
-                    st.session_state['action_form'] = 'cancel'
-                    st.rerun()
+        if (role == 'requester' and po.get('created_by') == uid()) or is_admin():
+            actions.append(('cancel', '❌ ยกเลิก', 'secondary'))
+
+    if not actions:
+        return
+
+    # ===== Render — ห่อในกล่องสวยๆ + จัดเรียง =====
+    st.markdown(
+        '<div style="margin:16px 0 8px; '
+        'font-size:13px; font-weight:500; color:#4A6FA5;">'
+        '⚡ การดำเนินการ</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ใช้ columns ตามจำนวนจริงของปุ่ม (ไม่เกิน 4 ต่อแถว)
+    per_row = 4
+    for row_start in range(0, len(actions), per_row):
+        row_actions = actions[row_start:row_start + per_row]
+        # padding columns ขวา ถ้าแถวสุดท้ายไม่เต็ม
+        cols = st.columns(per_row)
+        for i, (action_id, label, btn_type) in enumerate(row_actions):
+            with cols[i]:
+                if action_id == 'pdf':
+                    try:
+                        from pdf_generator import generate_po_pdf
+                        pdf_bytes = generate_po_pdf(po, role=role)
+                        st.download_button(
+                            label, data=pdf_bytes,
+                            file_name=f"{po['po_number']}.pdf",
+                            mime="application/pdf",
+                            use_container_width=True, type=btn_type,
+                            key=f"pdf_{po_id}",
+                        )
+                    except Exception:
+                        st.button(label, use_container_width=True,
+                                    disabled=True, key=f"pdf_disabled_{po_id}")
+                elif action_id == 'close':
+                    if st.button(label, use_container_width=True,
+                                  type=btn_type, key=f"close_{po_id}"):
+                        with st.spinner("กำลังปิดงาน..."):
+                            db.update_po_status(po_id, "เสร็จสมบูรณ์",
+                                                  uname(), role, "ปิดงาน")
+                        st.rerun()
+                elif action_id == 'clone':
+                    if st.button(label, use_container_width=True,
+                                  type=btn_type, key=f"clone_{po_id}",
+                                  help="สั่งซ้ำ — สร้าง PO ใหม่ด้วยรายการเดิม"):
+                        with st.spinner("กำลังคัดลอก..."):
+                            new_po = db.clone_purchase_order(po_id, uid(), uname())
+                        if new_po:
+                            st.session_state['view_po_id'] = new_po['id']
+                            st.session_state['action_form'] = None
+                            st.success(f"✅ สร้าง {new_po['po_number']} แล้ว")
+                            st.rerun()
+                else:
+                    # เปิด form
+                    if st.button(label, use_container_width=True,
+                                  type=btn_type, key=f"act_{action_id}_{po_id}"):
+                        st.session_state['action_form'] = action_id
+                        st.rerun()
 
     # Render forms
     af = st.session_state.get('action_form')
