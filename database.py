@@ -135,6 +135,83 @@ def _log_login(username, success):
         pass
 
 
+# ===== Session Token (จำหลัง refresh) =====
+def create_session_token(user_id):
+    """สร้าง session token + บันทึกใน DB — คืน token string"""
+    try:
+        token = _py_secrets.token_urlsafe(32)
+        sb = get_supabase()
+        sb.table("user_sessions").insert({
+            "token": token,
+            "user_id": user_id,
+        }).execute()
+        return token
+    except Exception:
+        return None
+
+
+def verify_session_token(token, max_idle_minutes=5):
+    """ตรวจ token ว่าใช้ได้ + ไม่หมดอายุ — คืน user dict หรือ None"""
+    if not token:
+        return None
+    try:
+        sb = get_supabase()
+        # ดึง session
+        r = sb.table("user_sessions").select("*").eq("token", token).execute()
+        if not r.data:
+            return None
+        sess = r.data[0]
+
+        # เช็ค idle timeout
+        last = sess.get('last_activity_at')
+        if last:
+            try:
+                last_dt = datetime.fromisoformat(last.replace('Z', '+00:00'))
+                # convert to naive UTC for comparison
+                last_naive = last_dt.replace(tzinfo=None)
+                now = datetime.utcnow()
+                idle_min = (now - last_naive).total_seconds() / 60
+                if idle_min > max_idle_minutes:
+                    # หมดอายุ — ลบ token
+                    delete_session_token(token)
+                    return None
+            except Exception:
+                pass
+
+        # ดึง user
+        ur = sb.table("users").select("*").eq("id", sess['user_id']).eq("is_active", True).execute()
+        if not ur.data:
+            return None
+
+        # touch — อัปเดต last_activity
+        sb.table("user_sessions").update({
+            "last_activity_at": datetime.utcnow().isoformat(),
+        }).eq("token", token).execute()
+
+        return ur.data[0]
+    except Exception:
+        return None
+
+
+def delete_session_token(token):
+    """ลบ token (logout)"""
+    if not token:
+        return
+    try:
+        get_supabase().table("user_sessions").delete().eq("token", token).execute()
+    except Exception:
+        pass
+
+
+def cleanup_expired_sessions(max_idle_minutes=5):
+    """ลบ sessions ที่หมดอายุ — เรียกเป็นครั้งคราว"""
+    try:
+        cutoff = (datetime.utcnow() - timedelta(minutes=max_idle_minutes)).isoformat()
+        get_supabase().table("user_sessions").delete().lt("last_activity_at", cutoff).execute()
+    except Exception:
+        pass
+
+
 def get_users():
     try:
         return get_supabase().table("users").select("*").order("created_at").execute().data or []
