@@ -1474,16 +1474,29 @@ def render_receive_form(po):
                 st.write(f"**{item['name']}**")
                 st.caption(f"สั่ง: {item['qty']:,.0f} {item.get('unit', '')}")
             with cols[1]:
+                # safe int — รองรับ None/string/float
+                _qr_raw = data[i].get('qty_received')
+                if _qr_raw is None or _qr_raw == '':
+                    _qr_raw = item.get('qty', 0) or 0
+                try:
+                    _qr_default = int(float(_qr_raw))
+                except (TypeError, ValueError):
+                    _qr_default = 0
                 qr = st.number_input("ได้รับ",
                                        min_value=0,
-                                       value=int(data[i].get('qty_received', item.get('qty', 0))),
+                                       value=_qr_default,
                                        step=1,
                                        key=f"qr_{po['id']}_{i}")
             with cols[2]:
+                _qd_raw = data[i].get('qty_damaged', 0) or 0
+                try:
+                    _qd_default = int(float(_qd_raw))
+                except (TypeError, ValueError):
+                    _qd_default = 0
                 qd = st.number_input("เสียหาย",
                                        min_value=0,
                                        max_value=qr,
-                                       value=int(data[i].get('qty_damaged', 0)),
+                                       value=min(_qd_default, qr),
                                        step=1,
                                        key=f"qd_{po['id']}_{i}")
             with cols[3]:
