@@ -319,7 +319,8 @@ def render_po_create():
             # โหลด draft → set ใน session
             st.session_state['po_items'] = draft['items']
             if draft.get('notes'):
-                st.session_state['po_create_notes'] = draft['notes']
+                # ใช้ internal key (ไม่ตรงกับ widget key)
+                st.session_state['_po_notes_value'] = draft['notes']
         st.session_state[draft_loaded_key] = True
 
     st.markdown("## ➕ สร้างใบสั่งซื้อใหม่")
@@ -336,8 +337,11 @@ def render_po_create():
                           use_container_width=True):
                 db.delete_po_draft(uid())
                 st.session_state['po_items'] = []
-                st.session_state['po_create_notes'] = ''
-                st.session_state[draft_loaded_key] = True
+                st.session_state['_po_notes_value'] = ''
+                # reset draft_loaded เพื่อให้โหลดใหม่ครั้งต่อไป
+                st.session_state.pop(draft_loaded_key, None)
+                # ลบ widget state
+                st.session_state.pop('po_create_notes', None)
                 st.success("ล้างแล้ว")
                 st.rerun()
 
@@ -428,7 +432,7 @@ def render_po_create():
                         'notes': custom_note,
                     })
                     db.save_po_draft(uid(), st.session_state['po_items'],
-                                       st.session_state.get('po_create_notes', ''))
+                                       st.session_state.get('_po_notes_value', ''))
                     st.rerun()
 
     # ===== รายการที่เลือก =====
@@ -438,10 +442,14 @@ def render_po_create():
         _render_selected_items(eq_list)
 
         st.divider()
+        # ใช้ value จาก _po_notes_value (internal storage) — Streamlit จะคุม widget เอง
         notes = st.text_area("📝 หมายเหตุเพิ่มเติม (ถ้ามี)",
                               placeholder="เช่น ต้องการให้ส่งเร็ว",
                               height=80,
+                              value=st.session_state.get('_po_notes_value', ''),
                               key="po_create_notes")
+        # sync internal value
+        st.session_state['_po_notes_value'] = notes
 
         col1, col2 = st.columns([1, 4])
         with col1:
@@ -458,11 +466,13 @@ def render_po_create():
                         created_by_name=uname(),
                     )
                     if new_po:
-                        # ลบ draft + reset
+                        # ลบ draft + reset (เลี่ยงแก้ widget key โดยตรง)
                         db.delete_po_draft(uid())
                         st.session_state['po_items'] = []
-                        st.session_state['po_create_notes'] = ''
+                        st.session_state['_po_notes_value'] = ''
                         st.session_state.pop(f'_draft_loaded_{uid()}', None)
+                        # ลบ widget key เพื่อให้ form refresh
+                        st.session_state.pop('po_create_notes', None)
                         st.session_state['view_po_id'] = new_po['id']
                         st.session_state['mode'] = 'po_view'
                         st.success(f"🎉 บันทึกใบ {new_po['po_number']} แล้ว")
@@ -614,7 +624,7 @@ def _render_eq_card(eq, is_selected):
                     if it.get('equipment_id') != eq['id']
                 ]
                 db.save_po_draft(uid(), st.session_state['po_items'],
-                                   st.session_state.get('po_create_notes', ''))
+                                   st.session_state.get('_po_notes_value', ''))
                 st.rerun()
         else:
             if st.button("➕ เพิ่ม", key=f"card_{eq['id']}",
@@ -627,7 +637,7 @@ def _render_eq_card(eq, is_selected):
                     'notes': '',
                 })
                 db.save_po_draft(uid(), st.session_state['po_items'],
-                                   st.session_state.get('po_create_notes', ''))
+                                   st.session_state.get('_po_notes_value', ''))
                 st.rerun()
 
 
@@ -668,7 +678,7 @@ def _render_selected_items(eq_list):
                                  disabled=item['qty'] <= 1):
                         st.session_state['po_items'][i]['qty'] -= 1
                         db.save_po_draft(uid(), st.session_state['po_items'],
-                                           st.session_state.get('po_create_notes', ''))
+                                           st.session_state.get('_po_notes_value', ''))
                         st.rerun()
                 with qc2:
                     new_qty = st.number_input(
@@ -682,13 +692,13 @@ def _render_selected_items(eq_list):
                     if new_qty != item['qty']:
                         st.session_state['po_items'][i]['qty'] = int(new_qty)
                         db.save_po_draft(uid(), st.session_state['po_items'],
-                                           st.session_state.get('po_create_notes', ''))
+                                           st.session_state.get('_po_notes_value', ''))
                         st.rerun()
                 with qc3:
                     if st.button("➕", key=f"inc_{i}"):
                         st.session_state['po_items'][i]['qty'] += 1
                         db.save_po_draft(uid(), st.session_state['po_items'],
-                                           st.session_state.get('po_create_notes', ''))
+                                           st.session_state.get('_po_notes_value', ''))
                         st.rerun()
 
             # หน่วย
@@ -705,7 +715,7 @@ def _render_selected_items(eq_list):
                              help="ลบออกจากรายการ"):
                     st.session_state['po_items'].pop(i)
                     db.save_po_draft(uid(), st.session_state['po_items'],
-                                       st.session_state.get('po_create_notes', ''))
+                                       st.session_state.get('_po_notes_value', ''))
                     st.rerun()
 
 
