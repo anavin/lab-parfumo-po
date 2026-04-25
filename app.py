@@ -518,7 +518,7 @@ def render_dashboard():
             )
         return
 
-    # KPI — กดเพื่อ filter
+    # KPI — คลิกการ์ดเพื่อ filter
     valid = [p for p in pos if p['status'] != 'ยกเลิก']
     pending = [p for p in pos if p['status'] in
                ('รอจัดซื้อดำเนินการ', 'สั่งซื้อแล้ว', 'กำลังขนส่ง')]
@@ -532,73 +532,105 @@ def render_dashboard():
             st.session_state['po_list_filter'] = filter_status
         st.rerun()
 
+    # CSS ทำให้ปุ่ม KPI ดูเหมือน metric card
+    st.markdown("""
+    <style>
+        .kpi-button button {
+            width: 100% !important;
+            height: 110px !important;
+            padding: 16px 20px !important;
+            text-align: left !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            justify-content: center !important;
+            background: linear-gradient(135deg, rgba(255,255,255,0.04), transparent) !important;
+            border: 1px solid rgba(200, 164, 126, 0.2) !important;
+            transition: all 0.2s ease !important;
+        }
+        .kpi-button button:hover {
+            border-color: rgba(200, 164, 126, 0.6) !important;
+            background: linear-gradient(135deg, rgba(200, 164, 126, 0.08), transparent) !important;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(200, 164, 126, 0.2) !important;
+        }
+        .kpi-button button p {
+            line-height: 1.3 !important;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+    def kpi_card_label(emoji, title, value, sub=""):
+        """สร้าง label สำหรับปุ่ม KPI"""
+        sub_html = f"\n\n_{sub}_" if sub else ""
+        return f"{emoji} **{title}**\n\n# {value}{sub_html}"
+
     if is_adm:
         m1, m2, m3, m4 = st.columns(4)
         with m1:
-            st.metric("📝 PO ทั้งหมด", len(pos))
-            if st.button("ดูทั้งหมด →", key="kpi_all",
-                         use_container_width=True):
+            st.markdown('<div class="kpi-button">', unsafe_allow_html=True)
+            if st.button(kpi_card_label("📝", "PO ทั้งหมด", len(pos)),
+                          key="kpi_all", use_container_width=True):
                 goto_po_list()
+            st.markdown('</div>', unsafe_allow_html=True)
         with m2:
-            st.metric("⏳ กำลังดำเนินการ", len(pending))
-            if st.button("ดูที่กำลังทำ →", key="kpi_pending",
-                         use_container_width=True):
+            st.markdown('<div class="kpi-button">', unsafe_allow_html=True)
+            if st.button(kpi_card_label("⏳", "กำลังดำเนินการ", len(pending)),
+                          key="kpi_pending", use_container_width=True):
                 goto_po_list("รอจัดซื้อดำเนินการ")
+            st.markdown('</div>', unsafe_allow_html=True)
         with m3:
-            st.metric("✅ เสร็จสิ้น", len(completed))
-            if st.button("ดูที่เสร็จ →", key="kpi_done",
-                         use_container_width=True):
+            st.markdown('<div class="kpi-button">', unsafe_allow_html=True)
+            if st.button(kpi_card_label("✅", "เสร็จสิ้น", len(completed)),
+                          key="kpi_done", use_container_width=True):
                 goto_po_list("เสร็จสมบูรณ์")
+            st.markdown('</div>', unsafe_allow_html=True)
         with m4:
-            st.metric("💰 ยอดรวม",
-                       f"฿{sum(p.get('total', 0) for p in valid):,.0f}")
-            if st.button("ดูรายงาน →", key="kpi_total",
-                         use_container_width=True):
+            total_amt = sum(p.get('total', 0) for p in valid)
+            st.markdown('<div class="kpi-button">', unsafe_allow_html=True)
+            if st.button(kpi_card_label("💰", "ยอดรวม", f"฿{total_amt:,.0f}"),
+                          key="kpi_total", use_container_width=True):
                 st.session_state['mode'] = 'reports'
                 st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
     else:
         m1, m2, m3 = st.columns(3)
         with m1:
-            st.metric("📝 PO ของฉัน", len(pos))
-            if st.button("ดูทั้งหมด →", key="kpi_my",
-                         use_container_width=True):
+            st.markdown('<div class="kpi-button">', unsafe_allow_html=True)
+            if st.button(kpi_card_label("📝", "PO ของฉัน", len(pos)),
+                          key="kpi_my", use_container_width=True):
                 goto_po_list()
+            st.markdown('</div>', unsafe_allow_html=True)
         with m2:
-            st.metric("⏳ ดำเนินการ", len(pending))
-            if st.button("ดูรายการ →", key="kpi_my_pending",
-                         use_container_width=True):
+            st.markdown('<div class="kpi-button">', unsafe_allow_html=True)
+            if st.button(kpi_card_label("⏳", "ดำเนินการ", len(pending)),
+                          key="kpi_my_pending", use_container_width=True):
                 goto_po_list("รอจัดซื้อดำเนินการ")
+            st.markdown('</div>', unsafe_allow_html=True)
         with m3:
-            st.metric("✅ เสร็จสิ้น", len(completed))
-            if st.button("ดูรายการ →", key="kpi_my_done",
-                         use_container_width=True):
+            st.markdown('<div class="kpi-button">', unsafe_allow_html=True)
+            if st.button(kpi_card_label("✅", "เสร็จสิ้น", len(completed)),
+                          key="kpi_my_done", use_container_width=True):
                 goto_po_list("เสร็จสมบูรณ์")
+            st.markdown('</div>', unsafe_allow_html=True)
 
-    # Issue alert — กดได้
+    # Issue alert — คลิกได้
     if issues:
-        ac1, ac2 = st.columns([5, 1])
-        with ac1:
-            st.error(f"⚠️ มี PO ที่มีปัญหา **{len(issues)} ใบ** — กรุณาตรวจสอบ")
-        with ac2:
-            if st.button("ดู →", key="alert_issues",
-                         use_container_width=True, type="primary"):
-                goto_po_list("มีปัญหา")
+        if st.button(f"⚠️ มี PO ที่มีปัญหา **{len(issues)} ใบ** — คลิกเพื่อตรวจสอบ →",
+                      key="alert_issues", use_container_width=True, type="primary"):
+            goto_po_list("มีปัญหา")
 
-    # Stock low alert (admin only) — กดได้
+    # Stock low alert (admin only) — คลิกได้
     if is_adm:
         low_stock = db.get_low_stock_equipment(threshold=10)
         if low_stock:
             names = ", ".join(e['name'] for e in low_stock[:5])
             if len(low_stock) > 5:
                 names += f" และอีก {len(low_stock) - 5} รายการ"
-            sc1, sc2 = st.columns([5, 1])
-            with sc1:
-                st.warning(f"📉 **สต็อกต่ำ {len(low_stock)} รายการ:** {names}")
-            with sc2:
-                if st.button("ดู →", key="alert_stock",
-                             use_container_width=True, type="primary"):
-                    st.session_state['mode'] = 'equipment'
-                    st.rerun()
+            if st.button(f"📉 สต็อกต่ำ **{len(low_stock)} รายการ:** {names} — คลิกเพื่อจัดการ →",
+                          key="alert_stock", use_container_width=True):
+                st.session_state['mode'] = 'equipment'
+                st.rerun()
 
     st.divider()
 
