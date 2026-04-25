@@ -685,7 +685,7 @@ def create_purchase_order(items, purpose="", notes="", created_by=None, created_
 
 
 def clone_purchase_order(source_po_id, created_by, created_by_name):
-    """คัดลอก PO เก่าเป็นใบใหม่ — เก็บ items + purpose + notes แต่ reset status/dates/supplier"""
+    """คัดลอก PO เก่าเป็นใบใหม่ — เก็บ items แต่ reset status/dates/supplier"""
     try:
         source = get_purchase_order(source_po_id)
         if not source:
@@ -702,8 +702,8 @@ def clone_purchase_order(source_po_id, created_by, created_by_name):
             })
         new_po = create_purchase_order(
             items=items,
-            purpose=f"[คัดลอกจาก {source['po_number']}] {source.get('purpose', '')}",
-            notes=source.get('notes', ''),
+            purpose="",  # ไม่ใช้ purpose แล้ว
+            notes=f"[คัดลอกจาก {source['po_number']}] {source.get('notes', '')}".strip(),
             created_by=created_by,
             created_by_name=created_by_name,
         )

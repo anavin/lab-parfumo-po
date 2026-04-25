@@ -1007,8 +1007,8 @@ def render_dashboard():
                     show_status_badge(po['status'])
                 with c2:
                     st.caption(f"📦 {len(po.get('items', []))} รายการ")
-                    if po.get('purpose'):
-                        st.caption(f"🎯 {po['purpose'][:60]}")
+                    if po.get('supplier_name'):
+                        st.caption(f"🏭 {po['supplier_name'][:60]}")
                 with c3:
                     if po.get('expected_date'):
                         days = days_until(po['expected_date'])

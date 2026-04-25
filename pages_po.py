@@ -89,7 +89,7 @@ def render_pending_receipt():
             p for p in pos
             if search in (p.get('po_number') or '').lower()
             or search in (p.get('supplier_name') or '').lower()
-            or search in (p.get('purpose') or '').lower()
+            or search in (p.get('notes') or '').lower()
             or any(search in (it.get('name') or '').lower()
                     for it in (p.get('items') or []))
         ]
@@ -173,8 +173,6 @@ def _render_pending_card(po, today, is_adm):
             # supplier — admin only
             if is_adm and po.get('supplier_name'):
                 st.markdown(f"🏭 **{po['supplier_name']}**")
-            if po.get('purpose'):
-                st.caption(f"🎯 {po['purpose'][:80]}")
             if po.get('tracking_number'):
                 st.caption(f"📋 Tracking: `{po['tracking_number']}`")
 
@@ -247,7 +245,7 @@ def render_po_list():
         else:
             f_supp = "ทั้งหมด"
     with col3:
-        search = st.text_input("🔍 ค้นหา", placeholder="เลข PO / จุดประสงค์")
+        search = st.text_input("🔍 ค้นหา", placeholder="เลข PO / supplier / สินค้า")
 
     filtered = pos[:]
     if f_status != "ทั้งหมด":
@@ -258,8 +256,10 @@ def render_po_list():
         s = search.lower()
         filtered = [p for p in filtered
                     if s in p.get('po_number', '').lower()
-                    or s in (p.get('purpose') or '').lower()
-                    or s in (p.get('supplier_name') or '').lower()]
+                    or s in (p.get('notes') or '').lower()
+                    or s in (p.get('supplier_name') or '').lower()
+                    or any(s in (it.get('name') or '').lower()
+                            for it in (p.get('items') or []))]
 
     st.caption(f"พบ {len(filtered)} ใบ")
 
@@ -276,8 +276,6 @@ def render_po_list():
                 if is_admin():
                     sn = po.get('supplier_name') or '(ยังไม่ระบุ supplier)'
                     st.write(f"🏭 **{sn}**")
-                if po.get('purpose'):
-                    st.caption(f"🎯 {po['purpose'][:60]}")
                 items_str = ", ".join(
                     f"{i.get('name', '')} × {i.get('qty', 0):,.0f}"
                     for i in po.get('items', [])[:2]
@@ -789,8 +787,25 @@ def render_po_view():
             else:
                 st.info("ยังไม่ได้ระบุ supplier — กดปุ่ม \"สั่งซื้อ\" ด้านบน")
         else:
-            st.markdown("### 🎯 จุดประสงค์")
-            st.write(po.get('purpose') or '-')
+            # staff: ดูสถานะการดำเนินงานแทน (ไม่เห็น supplier ตามนโยบาย)
+            st.markdown("### 📋 สถานะ")
+            status = po.get('status', '-')
+            if status == 'รอจัดซื้อดำเนินการ':
+                st.info("⏳ รอแอดมินติดต่อ supplier")
+            elif status == 'สั่งซื้อแล้ว':
+                st.success("✅ แอดมินสั่ง supplier แล้ว — รอจัดส่ง")
+            elif status == 'กำลังขนส่ง':
+                st.success("🚚 อยู่ระหว่างจัดส่ง")
+            elif status == 'รับของแล้ว':
+                st.success("📦 รับของเรียบร้อย")
+            elif status == 'มีปัญหา':
+                st.error("⚠️ มีปัญหา — แอดมินกำลังจัดการ")
+            elif status == 'เสร็จสมบูรณ์':
+                st.success("🎉 เสร็จสมบูรณ์")
+            elif status == 'ยกเลิก':
+                st.warning("❌ ยกเลิกแล้ว")
+            else:
+                st.write(status)
 
     with col2:
         st.markdown("### 📅 วันที่")
@@ -802,10 +817,6 @@ def render_po_view():
         if po.get('received_date'):
             st.write(f"**รับของ:** {fmt_date(po['received_date'])}")
 
-    if is_admin() and po.get('purpose'):
-        st.write(f"**🎯 จุดประสงค์:** {po['purpose']}")
-
-    # Tracking (admin)
     if is_admin() and po.get('tracking_number'):
         st.markdown(f"### 🚚 Tracking")
         st.code(po['tracking_number'])
