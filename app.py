@@ -10,6 +10,15 @@ from helpers import (current_user, is_admin, uid, uname, urole,
                       show_empty_state,
                       STATUS_COLOR, STATUS_EMOJI)
 
+# Cookie controller สำหรับ persist session
+try:
+    from streamlit_cookies_controller import CookieController
+    _cookie_controller = CookieController()
+    HAS_COOKIES = True
+except Exception:
+    _cookie_controller = None
+    HAS_COOKIES = False
+
 
 st.set_page_config(
     page_title="Lab Parfumo PO Pro",
@@ -314,10 +323,85 @@ def init_session():
         'mode': 'dashboard',
         'po_items': [],
         'view_po_id': None,
+        'session_token': None,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
             st.session_state[k] = v
+
+
+def restore_session_from_cookie():
+    """ถ้ามี token ใน cookie → restore user (สำหรับ refresh)"""
+    if st.session_state.get('user'):
+        return  # มีอยู่แล้ว
+    if not HAS_COOKIES or not _cookie_controller:
+        return
+    try:
+        token = _cookie_controller.get('lp_session')
+        if not token:
+            return
+        user = db.verify_session_token(token, max_idle_minutes=SESSION_TIMEOUT_MIN)
+        if user:
+            st.session_state['user'] = user
+            st.session_state['session_token'] = token
+            st.session_state['last_activity'] = datetime.now().isoformat()
+        else:
+            # token หมดอายุ — ลบ cookie
+            try:
+                _cookie_controller.remove('lp_session')
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def save_session_to_cookie(token):
+    """บันทึก session token ลง cookie (อายุ 7 วัน — แต่ฝั่ง server เช็ค idle 5 นาที)"""
+    if not HAS_COOKIES or not _cookie_controller:
+        return
+    try:
+        _cookie_controller.set('lp_session', token,
+                                 max_age=7 * 24 * 60 * 60)  # 7 days max
+    except Exception:
+        pass
+
+
+def clear_session_cookie():
+    """ลบ cookie ตอน logout"""
+    if not HAS_COOKIES or not _cookie_controller:
+        return
+    try:
+        _cookie_controller.remove('lp_session')
+    except Exception:
+        pass
+
+
+def restore_session_from_url():
+    """[Legacy] ถ้ามี token ใน URL → restore user"""
+    if st.session_state.get('user'):
+        return
+    try:
+        token = st.query_params.get('token')
+        if not token:
+            return
+        user = db.verify_session_token(token, max_idle_minutes=SESSION_TIMEOUT_MIN)
+        if user:
+            st.session_state['user'] = user
+            st.session_state['session_token'] = token
+            st.session_state['last_activity'] = datetime.now().isoformat()
+            # ย้ายจาก URL ไป cookie แทน
+            save_session_to_cookie(token)
+            try:
+                del st.query_params['token']
+            except Exception:
+                pass
+        else:
+            try:
+                del st.query_params['token']
+            except Exception:
+                pass
+    except Exception:
+        pass
 
 
 init_session()
@@ -354,7 +438,12 @@ def login_page():
                     with st.spinner("กำลังตรวจสอบ..."):
                         user = db.verify_user(u, p)
                     if user:
+                        # สร้าง session token + บันทึกลง cookie (refresh ก็ยัง login)
+                        token = db.create_session_token(user['id'])
+                        if token:
+                            save_session_to_cookie(token)
                         st.session_state['user'] = user
+                        st.session_state['session_token'] = token
                         st.session_state['last_activity'] = datetime.now().isoformat()
                         st.rerun()
                     else:
@@ -437,6 +526,16 @@ def render_header():
                 st.rerun()
         with nc2:
             if st.button("🚪", use_container_width=True, help="ออกจากระบบ"):
+                # ลบ token จาก DB + cookie + URL
+                tk = st.session_state.get('session_token')
+                if tk:
+                    db.delete_session_token(tk)
+                clear_session_cookie()
+                try:
+                    if 'token' in st.query_params:
+                        del st.query_params['token']
+                except Exception:
+                    pass
                 st.session_state.clear()
                 init_session()
                 st.rerun()
@@ -729,7 +828,7 @@ from pages_admin import (render_equipment, render_reports,
 # Main
 # ==================================================================
 
-SESSION_TIMEOUT_MIN = 30  # auto logout หลังไม่ได้ใช้ 30 นาที
+SESSION_TIMEOUT_MIN = 5  # auto logout หลังไม่ได้ใช้ 5 นาที
 
 
 def check_session_timeout():
@@ -742,9 +841,11 @@ def check_session_timeout():
         last_dt = datetime.fromisoformat(last)
         elapsed = (datetime.now() - last_dt).total_seconds() / 60
         if elapsed > SESSION_TIMEOUT_MIN:
+            # ลบ cookie + clear state
+            clear_session_cookie()
             st.session_state.clear()
             init_session()
-            st.warning(f"⏱️ Session หมดอายุ — กรุณาเข้าสู่ระบบใหม่")
+            st.warning(f"⏱️ Session หมดอายุ ({SESSION_TIMEOUT_MIN} นาที) — กรุณาเข้าสู่ระบบใหม่")
             return True
     except Exception:
         pass
@@ -806,12 +907,26 @@ def force_change_password_page():
 
 
 def main():
+    # ลอง restore session — cookie ก่อน, URL token เป็น fallback
+    restore_session_from_cookie()
+    restore_session_from_url()
+
     if not st.session_state.get('user'):
         login_page()
         return
 
     # เช็ค session timeout
     if check_session_timeout():
+        # ลบ token จาก DB + cookie + URL
+        tk = st.session_state.get('session_token')
+        if tk:
+            db.delete_session_token(tk)
+        clear_session_cookie()
+        try:
+            if 'token' in st.query_params:
+                del st.query_params['token']
+        except Exception:
+            pass
         login_page()
         return
 
