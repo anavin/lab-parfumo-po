@@ -377,11 +377,12 @@ def clear_session_cookie():
 
 
 def restore_session_from_url():
-    """[Legacy] ถ้ามี token ใน URL → restore user"""
+    """ถ้ามี token ใน URL → restore user (วิธีหลัก — Streamlit native)"""
     if st.session_state.get('user'):
         return
     try:
-        token = st.query_params.get('token')
+        # รับชื่อ param ทั้ง 't' (ใหม่) และ 'token' (legacy)
+        token = st.query_params.get('t') or st.query_params.get('token')
         if not token:
             return
         user = db.verify_session_token(token, max_idle_minutes=SESSION_TIMEOUT_MIN)
@@ -389,15 +390,22 @@ def restore_session_from_url():
             st.session_state['user'] = user
             st.session_state['session_token'] = token
             st.session_state['last_activity'] = datetime.now().isoformat()
-            # ย้ายจาก URL ไป cookie แทน
+            # backup to cookie too
             save_session_to_cookie(token)
+            # normalize ใน URL ให้ใช้ 't'
             try:
-                del st.query_params['token']
+                if 'token' in st.query_params:
+                    del st.query_params['token']
+                st.query_params['t'] = token
             except Exception:
                 pass
         else:
+            # token หมดอายุ → ลบทั้งคู่
             try:
-                del st.query_params['token']
+                if 'token' in st.query_params:
+                    del st.query_params['token']
+                if 't' in st.query_params:
+                    del st.query_params['t']
             except Exception:
                 pass
     except Exception:
@@ -438,10 +446,11 @@ def login_page():
                     with st.spinner("กำลังตรวจสอบ..."):
                         user = db.verify_user(u, p)
                     if user:
-                        # สร้าง session token + บันทึกลง cookie (refresh ก็ยัง login)
+                        # สร้าง session token + ใส่ใน URL (refresh จะกลับมา login)
                         token = db.create_session_token(user['id'])
                         if token:
-                            save_session_to_cookie(token)
+                            st.query_params['t'] = token
+                            save_session_to_cookie(token)  # backup
                         st.session_state['user'] = user
                         st.session_state['session_token'] = token
                         st.session_state['last_activity'] = datetime.now().isoformat()
@@ -532,8 +541,9 @@ def render_header():
                     db.delete_session_token(tk)
                 clear_session_cookie()
                 try:
-                    if 'token' in st.query_params:
-                        del st.query_params['token']
+                    for k in ('t', 'token'):
+                        if k in st.query_params:
+                            del st.query_params[k]
                 except Exception:
                     pass
                 st.session_state.clear()
@@ -907,9 +917,10 @@ def force_change_password_page():
 
 
 def main():
-    # ลอง restore session — cookie ก่อน, URL token เป็น fallback
-    restore_session_from_cookie()
+    # ลอง restore session — URL ก่อน (เร็วและเสถียรกว่า), cookie เป็น fallback
     restore_session_from_url()
+    if not st.session_state.get('user'):
+        restore_session_from_cookie()
 
     if not st.session_state.get('user'):
         login_page()
@@ -923,8 +934,9 @@ def main():
             db.delete_session_token(tk)
         clear_session_cookie()
         try:
-            if 'token' in st.query_params:
-                del st.query_params['token']
+            for k in ('t', 'token'):
+                if k in st.query_params:
+                    del st.query_params[k]
         except Exception:
             pass
         login_page()
