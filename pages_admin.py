@@ -251,35 +251,60 @@ def _render_eq_admin_card(eq):
         images.insert(0, eq['image_url'])
 
     with st.container(border=True):
-        # รูปหลัก + thumbnails
+        # รูปหลัก — square fixed 220x220 (object-fit: cover) ทุกการ์ดเท่ากัน
         if images:
-            try:
-                st.image(images[0], use_container_width=True)
-                # ถ้ามีหลายรูป แสดง thumbnails
-                if len(images) > 1:
-                    thumb_cols = st.columns(min(len(images), 4))
-                    for i, url in enumerate(images[:4]):
-                        with thumb_cols[i]:
-                            try:
-                                st.image(url, use_container_width=True)
-                            except Exception:
-                                pass
-                    if len(images) > 4:
-                        st.caption(f"📷 และอีก {len(images) - 4} รูป")
-                else:
-                    st.caption(f"📷 1 รูป")
-            except Exception:
-                st.markdown(
-                    '<div style="background:#333; height:140px; '
-                    'border-radius:4px; display:flex; align-items:center; '
-                    'justify-content:center; font-size:48px;">🧴</div>',
-                    unsafe_allow_html=True,
-                )
-        else:
+            primary_url = images[0]
             st.markdown(
-                '<div style="background:#333; height:140px; '
-                'border-radius:4px; display:flex; align-items:center; '
-                'justify-content:center; font-size:48px;">🧴</div>',
+                f'<div style="width:100%; aspect-ratio:1/1; '
+                f'background:#1a1a1a; border-radius:8px; overflow:hidden; '
+                f'display:flex; align-items:center; justify-content:center; '
+                f'margin-bottom:8px;">'
+                f'<img src="{primary_url}" '
+                f'style="width:100%; height:100%; object-fit:cover; '
+                f'display:block;" '
+                f'onerror="this.style.display=\'none\'; '
+                f'this.parentElement.innerHTML=\'<span style=&quot;font-size:48px&quot;>🧴</span>\';"/>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+            # Thumbnails (รูปที่ 2-5) — square เล็ก ขนาดเท่ากัน
+            if len(images) > 1:
+                thumb_cols = st.columns(4)
+                for i in range(4):
+                    with thumb_cols[i]:
+                        if i < len(images) - 1:
+                            url = images[i + 1] if i + 1 < len(images) else None
+                            if url:
+                                st.markdown(
+                                    f'<div style="width:100%; aspect-ratio:1/1; '
+                                    f'background:#1a1a1a; border-radius:4px; '
+                                    f'overflow:hidden;">'
+                                    f'<img src="{url}" '
+                                    f'style="width:100%; height:100%; '
+                                    f'object-fit:cover; display:block;"/>'
+                                    f'</div>',
+                                    unsafe_allow_html=True,
+                                )
+                        else:
+                            # placeholder ว่าง สำหรับให้ thumbs เรียงเท่ากัน
+                            st.markdown(
+                                '<div style="width:100%; aspect-ratio:1/1;"></div>',
+                                unsafe_allow_html=True,
+                            )
+                if len(images) > 5:
+                    st.caption(f"📷 และอีก {len(images) - 5} รูป")
+                else:
+                    st.caption(f"📷 {len(images)} รูป")
+            else:
+                st.caption("📷 1 รูป")
+        else:
+            # ไม่มีรูป — placeholder square
+            st.markdown(
+                '<div style="width:100%; aspect-ratio:1/1; '
+                'background:#1a1a1a; border-radius:8px; '
+                'display:flex; align-items:center; justify-content:center; '
+                'font-size:64px; margin-bottom:8px;">🧴</div>',
                 unsafe_allow_html=True,
             )
 
