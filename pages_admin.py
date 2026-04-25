@@ -244,14 +244,15 @@ def _stock_status(stock):
 
 
 def _render_eq_admin_card(eq):
-    """การ์ดอุปกรณ์ในหน้าจัดการ — รองรับหลายรูป + แก้/ลบ"""
+    """การ์ดอุปกรณ์ในหน้าจัดการ — รองรับหลายรูป + แก้/ลบ
+    ทุกการ์ดสูงเท่ากันทุกใบ (consistent height)"""
     # รวม image_urls + image_url (legacy) เป็น list
     images = list(eq.get('image_urls') or [])
     if eq.get('image_url') and eq['image_url'] not in images:
         images.insert(0, eq['image_url'])
 
     with st.container(border=True):
-        # รูปหลัก — square fixed 220x220 (object-fit: cover) ทุกการ์ดเท่ากัน
+        # ===== รูปหลัก — square fixed (1:1) =====
         if images:
             primary_url = images[0]
             st.markdown(
@@ -267,39 +268,7 @@ def _render_eq_admin_card(eq):
                 f'</div>',
                 unsafe_allow_html=True,
             )
-
-            # Thumbnails (รูปที่ 2-5) — square เล็ก ขนาดเท่ากัน
-            if len(images) > 1:
-                thumb_cols = st.columns(4)
-                for i in range(4):
-                    with thumb_cols[i]:
-                        if i < len(images) - 1:
-                            url = images[i + 1] if i + 1 < len(images) else None
-                            if url:
-                                st.markdown(
-                                    f'<div style="width:100%; aspect-ratio:1/1; '
-                                    f'background:#1a1a1a; border-radius:4px; '
-                                    f'overflow:hidden;">'
-                                    f'<img src="{url}" '
-                                    f'style="width:100%; height:100%; '
-                                    f'object-fit:cover; display:block;"/>'
-                                    f'</div>',
-                                    unsafe_allow_html=True,
-                                )
-                        else:
-                            # placeholder ว่าง สำหรับให้ thumbs เรียงเท่ากัน
-                            st.markdown(
-                                '<div style="width:100%; aspect-ratio:1/1;"></div>',
-                                unsafe_allow_html=True,
-                            )
-                if len(images) > 5:
-                    st.caption(f"📷 และอีก {len(images) - 5} รูป")
-                else:
-                    st.caption(f"📷 {len(images)} รูป")
-            else:
-                st.caption("📷 1 รูป")
         else:
-            # ไม่มีรูป — placeholder square
             st.markdown(
                 '<div style="width:100%; aspect-ratio:1/1; '
                 'background:#1a1a1a; border-radius:8px; '
@@ -308,25 +277,74 @@ def _render_eq_admin_card(eq):
                 unsafe_allow_html=True,
             )
 
-        # ชื่อ
-        st.markdown(f"**{eq.get('name', '-')}**")
+        # ===== Thumbnails — แสดง 4 ช่องเสมอ (placeholder ถ้าไม่มี) =====
+        thumb_cols = st.columns(4)
+        for i in range(4):
+            with thumb_cols[i]:
+                # รูปที่ 2-5 (i+1 = 1,2,3,4)
+                idx = i + 1
+                if idx < len(images):
+                    url = images[idx]
+                    st.markdown(
+                        f'<div style="width:100%; aspect-ratio:1/1; '
+                        f'background:#1a1a1a; border-radius:4px; '
+                        f'overflow:hidden;">'
+                        f'<img src="{url}" '
+                        f'style="width:100%; height:100%; '
+                        f'object-fit:cover; display:block;"/>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    # placeholder เก็บ slot ให้สูงเท่ากัน
+                    st.markdown(
+                        '<div style="width:100%; aspect-ratio:1/1; '
+                        'background:rgba(255,255,255,0.02); '
+                        'border:1px dashed rgba(200,164,126,0.1); '
+                        'border-radius:4px;"></div>',
+                        unsafe_allow_html=True,
+                    )
 
-        # SKU + หมวด + หน่วย
+        # caption จำนวนรูป (แสดงเสมอ)
+        st.caption(f"📷 {len(images)} รูป" if images else "📷 ไม่มีรูป")
+
+        # ===== ชื่อ — บรรทัดเดียว ตัดถ้ายาว =====
+        st.markdown(
+            f'<div style="font-weight:500; font-size:15px; '
+            f'white-space:nowrap; overflow:hidden; text-overflow:ellipsis; '
+            f'margin:6px 0 4px;" title="{eq.get("name", "-")}">'
+            f'{eq.get("name", "-")}</div>',
+            unsafe_allow_html=True,
+        )
+
+        # ===== SKU + หมวด + หน่วย — บรรทัดเดียว =====
         sku = eq.get('sku') or '-'
-        st.caption(f"SKU: {sku}")
-        st.caption(f"📂 {eq.get('category', '-')}  |  📐 {eq.get('unit', 'ชิ้น')}")
+        st.markdown(
+            f'<div style="font-size:12px; color:#888; '
+            f'margin-bottom:2px;">SKU: {sku}</div>'
+            f'<div style="font-size:12px; color:#888;">'
+            f'📂 {eq.get("category", "-")}  |  📐 {eq.get("unit", "ชิ้น")}</div>',
+            unsafe_allow_html=True,
+        )
 
-        # คำอธิบาย
+        # ===== คำอธิบาย — บังคับ 2 บรรทัด ตัดถ้ายาว =====
         desc = (eq.get('description') or '').strip()
-        if desc:
-            short = desc if len(desc) <= 80 else desc[:80] + "..."
-            st.caption(f"📝 {short}")
+        st.markdown(
+            f'<div style="font-size:12px; color:#888; '
+            f'min-height:34px; max-height:34px; overflow:hidden; '
+            f'display:-webkit-box; -webkit-line-clamp:2; '
+            f'-webkit-box-orient:vertical; '
+            f'margin:6px 0;">'
+            f'{f"📝 {desc}" if desc else "&nbsp;"}'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
-        # แถวราคา + คงเหลือ
+        # ===== แถวราคา + คงเหลือ =====
         emoji, color, stock_label = _stock_status(eq.get('stock', 0))
         st.markdown(
             f'<div style="display:flex; justify-content:space-between; '
-            f'align-items:center; padding:6px 0; margin-top:6px; '
+            f'align-items:center; padding:6px 0; '
             f'border-top:1px solid #333;">'
             f'<span style="color:#C8A47E; font-weight:500;">'
             f'💰 ฿{eq.get("last_cost", 0):,.2f}</span>'
@@ -336,7 +354,7 @@ def _render_eq_admin_card(eq):
             unsafe_allow_html=True,
         )
 
-        # ปุ่ม แก้/ลบ
+        # ===== ปุ่ม แก้/ลบ =====
         bc1, bc2 = st.columns(2)
         with bc1:
             if st.button("✏️ แก้ไข", key=f"e_{eq['id']}",
