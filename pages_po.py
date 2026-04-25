@@ -458,17 +458,16 @@ def _stock_indicator(stock):
 
 
 def _render_eq_card(eq, is_selected):
-    """แสดงการ์ดอุปกรณ์ + ปุ่มเพิ่ม/ลบ"""
+    """แสดงการ์ดอุปกรณ์ + ปุ่มเพิ่ม/ลบ — square images + uniform height"""
     border_color = "#C8A47E" if is_selected else "#444"
     border_width = "2px" if is_selected else "1px"
     bg = "#2a2520" if is_selected else "#252525"
 
-    # ใช้รูปหลัก (image_url) — ถ้าไม่มี fallback ไป image_urls[0]
-    image_url = eq.get('image_url')
-    if not image_url:
-        urls = eq.get('image_urls') or []
-        if urls:
-            image_url = urls[0]
+    # รวมรูปทั้งหมด
+    images = list(eq.get('image_urls') or [])
+    if eq.get('image_url') and eq['image_url'] not in images:
+        images.insert(0, eq['image_url'])
+
     name = eq.get('name', '-')
     sku = eq.get('sku') or '-'
     unit = eq.get('unit', 'ชิ้น')
@@ -481,58 +480,108 @@ def _render_eq_card(eq, is_selected):
     with st.container(border=False):
         st.markdown(
             f'<div style="border:{border_width} solid {border_color}; '
-            f'background:{bg}; border-radius:8px; padding:10px; '
-            f'margin-bottom:8px;">',
+            f'background:{bg}; border-radius:10px; padding:12px; '
+            f'margin-bottom:10px;">',
             unsafe_allow_html=True,
         )
 
-        # Image
-        if image_url:
-            try:
-                st.image(image_url, use_container_width=True)
-            except Exception:
-                st.markdown(
-                    '<div style="background:#333; height:100px; '
-                    'border-radius:4px; display:flex; align-items:center; '
-                    'justify-content:center; font-size:36px;">🧴</div>',
-                    unsafe_allow_html=True,
-                )
+        # ===== รูปหลัก — square 1:1 =====
+        if images:
+            primary = images[0]
+            st.markdown(
+                f'<div style="width:100%; aspect-ratio:1/1; '
+                f'background:#1a1a1a; border-radius:8px; overflow:hidden; '
+                f'display:flex; align-items:center; justify-content:center; '
+                f'margin-bottom:6px;">'
+                f'<img src="{primary}" '
+                f'style="width:100%; height:100%; object-fit:cover; '
+                f'display:block;" '
+                f'onerror="this.style.display=\'none\'; '
+                f'this.parentElement.innerHTML=\'<span style=&quot;font-size:48px&quot;>🧴</span>\';"/>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
         else:
             st.markdown(
-                '<div style="background:#333; height:100px; '
-                'border-radius:4px; display:flex; align-items:center; '
-                'justify-content:center; font-size:36px;">🧴</div>',
+                '<div style="width:100%; aspect-ratio:1/1; '
+                'background:#1a1a1a; border-radius:8px; '
+                'display:flex; align-items:center; justify-content:center; '
+                'font-size:56px; margin-bottom:6px;">🧴</div>',
                 unsafe_allow_html=True,
             )
 
-        # Info
+        # ===== Thumbnails — แสดง 4 ช่องเสมอ =====
+        if len(images) > 1 or True:  # always show row to keep height equal
+            tc = st.columns(4)
+            for i in range(4):
+                with tc[i]:
+                    idx = i + 1  # รูปที่ 2-5
+                    if idx < len(images):
+                        url = images[idx]
+                        st.markdown(
+                            f'<div style="width:100%; aspect-ratio:1/1; '
+                            f'background:#1a1a1a; border-radius:4px; '
+                            f'overflow:hidden;">'
+                            f'<img src="{url}" '
+                            f'style="width:100%; height:100%; '
+                            f'object-fit:cover; display:block;"/>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        # placeholder
+                        st.markdown(
+                            '<div style="width:100%; aspect-ratio:1/1; '
+                            'background:rgba(255,255,255,0.02); '
+                            'border:1px dashed rgba(200,164,126,0.1); '
+                            'border-radius:4px;"></div>',
+                            unsafe_allow_html=True,
+                        )
+
+        # ===== ชื่อสินค้า — font ใหญ่ขึ้น 15px =====
         st.markdown(
-            f'<div style="font-size:13px; font-weight:500; margin-top:6px;">{name}</div>'
-            f'<div style="font-size:10px; color:#888;">SKU: {sku} | {unit}</div>'
-            f'<div style="font-size:10px; color:#888; margin-top:2px;">📂 {cat}</div>',
+            f'<div style="font-size:15px; font-weight:500; '
+            f'margin-top:8px; line-height:1.3; '
+            f'white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" '
+            f'title="{name}">{name}</div>',
             unsafe_allow_html=True,
         )
-        if desc:
-            short_desc = desc if len(desc) <= 60 else desc[:60] + "..."
-            st.markdown(
-                f'<div style="font-size:11px; color:#aaa; margin-top:4px; '
-                f'min-height:30px;">{short_desc}</div>',
-                unsafe_allow_html=True,
-            )
-        else:
-            st.markdown('<div style="min-height:30px;"></div>',
-                          unsafe_allow_html=True)
 
-        # Stock + button row
+        # ===== SKU + หน่วย =====
+        st.markdown(
+            f'<div style="font-size:12px; color:#888; '
+            f'margin-top:2px;">SKU: {sku}  |  📐 {unit}</div>'
+            f'<div style="font-size:12px; color:#888; '
+            f'margin-top:2px;">📂 {cat}</div>',
+            unsafe_allow_html=True,
+        )
+
+        # ===== คำอธิบาย — บังคับ 2 บรรทัด =====
+        st.markdown(
+            f'<div style="font-size:12px; color:#aaa; '
+            f'min-height:34px; max-height:34px; overflow:hidden; '
+            f'display:-webkit-box; -webkit-line-clamp:2; '
+            f'-webkit-box-orient:vertical; '
+            f'margin:6px 0;">'
+            f'{desc if desc else "&nbsp;"}'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+        # ===== Stock indicator =====
         st.markdown(
             f'<div style="display:flex; justify-content:space-between; '
-            f'align-items:center; margin-top:6px; padding-top:6px; '
-            f'border-top:1px solid #333; font-size:10px; color:{stock_color};">'
-            f'{stock_emoji} {stock_label}</div>',
+            f'align-items:center; margin-top:6px; padding-top:8px; '
+            f'border-top:1px solid #333; font-size:13px; '
+            f'color:{stock_color}; font-weight:500;">'
+            f'<span>{stock_emoji} {stock_label}</span>'
+            f'</div>',
             unsafe_allow_html=True,
         )
 
-        # Click button
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # ===== ปุ่ม เพิ่ม/ลบ — font ใหญ่ขึ้น =====
         if is_selected:
             if st.button("✓ เลือกแล้ว — กดเพื่อลบ", key=f"card_{eq['id']}",
                          use_container_width=True, type="primary"):
@@ -552,8 +601,6 @@ def _render_eq_card(eq, is_selected):
                     'notes': '',
                 })
                 st.rerun()
-
-        st.markdown('</div>', unsafe_allow_html=True)
 
 
 def _render_selected_items(eq_list):
