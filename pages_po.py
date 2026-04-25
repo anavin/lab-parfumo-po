@@ -318,13 +318,6 @@ def render_po_create():
         st.session_state['mode'] = 'po_list'
         st.rerun()
 
-    purpose = st.text_input(
-        "🎯 จุดประสงค์การสั่งซื้อ *",
-        placeholder="เช่น เตรียมขายเดือนหน้า / ออกบูธ / สินค้าใหม่",
-        help="ข้อมูลนี้จะแสดงให้แอดมินเห็น",
-        key="po_create_purpose",
-    )
-
     eq_list = db.get_equipment_list(active_only=True)
 
     # ===== Search + Filter =====
@@ -425,14 +418,12 @@ def render_po_create():
         with col1:
             if st.button("✅ บันทึกใบ PO", type="primary",
                           use_container_width=True):
-                if not purpose:
-                    st.error("กรุณากรอกจุดประสงค์")
-                elif not st.session_state['po_items']:
+                if not st.session_state['po_items']:
                     st.error("กรุณาเพิ่มรายการ")
                 else:
                     new_po = db.create_purchase_order(
                         items=st.session_state['po_items'],
-                        purpose=purpose,
+                        purpose="",
                         notes=notes,
                         created_by=uid(),
                         created_by_name=uname(),

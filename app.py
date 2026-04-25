@@ -416,8 +416,12 @@ def render_header():
                 if st.button(label, use_container_width=True,
                              type="primary" if active else "secondary",
                              key=f"nav_{k}"):
+                    # เคลียร์ state ทั้งหมดเมื่อเปลี่ยนหน้า
                     st.session_state['mode'] = k
                     st.session_state['view_po_id'] = None
+                    st.session_state['action_form'] = None
+                    st.session_state.pop('catalog_edit_id', None)
+                    st.session_state.pop('po_list_filter', None)
                     st.rerun()
     with c3:
         notifs = db.get_notifications(user['id'], unread_only=True)
@@ -427,6 +431,9 @@ def render_header():
             if st.button(nb, use_container_width=True,
                          type="primary" if notifs else "secondary"):
                 st.session_state['mode'] = 'notifications'
+                st.session_state['view_po_id'] = None
+                st.session_state['action_form'] = None
+                st.session_state.pop('catalog_edit_id', None)
                 st.rerun()
         with nc2:
             if st.button("🚪", use_container_width=True, help="ออกจากระบบ"):
