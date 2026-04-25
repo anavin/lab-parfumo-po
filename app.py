@@ -518,7 +518,7 @@ def render_dashboard():
             )
         return
 
-    # KPI
+    # KPI — กดเพื่อ filter
     valid = [p for p in pos if p['status'] != 'ยกเลิก']
     pending = [p for p in pos if p['status'] in
                ('รอจัดซื้อดำเนินการ', 'สั่งซื้อแล้ว', 'กำลังขนส่ง')]
@@ -526,29 +526,79 @@ def render_dashboard():
                  ('รับของแล้ว', 'เสร็จสมบูรณ์')]
     issues = [p for p in pos if p['status'] == 'มีปัญหา']
 
+    def goto_po_list(filter_status=None):
+        st.session_state['mode'] = 'po_list'
+        if filter_status:
+            st.session_state['po_list_filter'] = filter_status
+        st.rerun()
+
     if is_adm:
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("📝 PO ทั้งหมด", len(pos))
-        m2.metric("⏳ กำลังดำเนินการ", len(pending))
-        m3.metric("✅ เสร็จสิ้น", len(completed))
-        m4.metric("💰 ยอดรวม", f"฿{sum(p.get('total', 0) for p in valid):,.0f}")
+        with m1:
+            st.metric("📝 PO ทั้งหมด", len(pos))
+            if st.button("ดูทั้งหมด →", key="kpi_all",
+                         use_container_width=True):
+                goto_po_list()
+        with m2:
+            st.metric("⏳ กำลังดำเนินการ", len(pending))
+            if st.button("ดูที่กำลังทำ →", key="kpi_pending",
+                         use_container_width=True):
+                goto_po_list("รอจัดซื้อดำเนินการ")
+        with m3:
+            st.metric("✅ เสร็จสิ้น", len(completed))
+            if st.button("ดูที่เสร็จ →", key="kpi_done",
+                         use_container_width=True):
+                goto_po_list("เสร็จสมบูรณ์")
+        with m4:
+            st.metric("💰 ยอดรวม",
+                       f"฿{sum(p.get('total', 0) for p in valid):,.0f}")
+            if st.button("ดูรายงาน →", key="kpi_total",
+                         use_container_width=True):
+                st.session_state['mode'] = 'reports'
+                st.rerun()
     else:
         m1, m2, m3 = st.columns(3)
-        m1.metric("📝 PO ของฉัน", len(pos))
-        m2.metric("⏳ ดำเนินการ", len(pending))
-        m3.metric("✅ เสร็จสิ้น", len(completed))
+        with m1:
+            st.metric("📝 PO ของฉัน", len(pos))
+            if st.button("ดูทั้งหมด →", key="kpi_my",
+                         use_container_width=True):
+                goto_po_list()
+        with m2:
+            st.metric("⏳ ดำเนินการ", len(pending))
+            if st.button("ดูรายการ →", key="kpi_my_pending",
+                         use_container_width=True):
+                goto_po_list("รอจัดซื้อดำเนินการ")
+        with m3:
+            st.metric("✅ เสร็จสิ้น", len(completed))
+            if st.button("ดูรายการ →", key="kpi_my_done",
+                         use_container_width=True):
+                goto_po_list("เสร็จสมบูรณ์")
 
+    # Issue alert — กดได้
     if issues:
-        st.warning(f"⚠️ มี PO ที่มีปัญหา {len(issues)} ใบ — กรุณาตรวจสอบ")
+        ac1, ac2 = st.columns([5, 1])
+        with ac1:
+            st.error(f"⚠️ มี PO ที่มีปัญหา **{len(issues)} ใบ** — กรุณาตรวจสอบ")
+        with ac2:
+            if st.button("ดู →", key="alert_issues",
+                         use_container_width=True, type="primary"):
+                goto_po_list("มีปัญหา")
 
-    # Stock low alert (admin only)
+    # Stock low alert (admin only) — กดได้
     if is_adm:
         low_stock = db.get_low_stock_equipment(threshold=10)
         if low_stock:
             names = ", ".join(e['name'] for e in low_stock[:5])
             if len(low_stock) > 5:
                 names += f" และอีก {len(low_stock) - 5} รายการ"
-            st.warning(f"📉 **สต็อกต่ำ {len(low_stock)} รายการ:** {names}")
+            sc1, sc2 = st.columns([5, 1])
+            with sc1:
+                st.warning(f"📉 **สต็อกต่ำ {len(low_stock)} รายการ:** {names}")
+            with sc2:
+                if st.button("ดู →", key="alert_stock",
+                             use_container_width=True, type="primary"):
+                    st.session_state['mode'] = 'equipment'
+                    st.rerun()
 
     st.divider()
 

@@ -234,7 +234,12 @@ def render_po_list():
     col1, col2, col3 = st.columns([1.5, 1.5, 2])
     with col1:
         statuses = ["ทั้งหมด"] + db.PO_STATUSES
-        f_status = st.selectbox("สถานะ", statuses)
+        # ใช้ filter ที่มาจาก dashboard
+        preset_filter = st.session_state.pop('po_list_filter', None)
+        default_idx = 0
+        if preset_filter and preset_filter in statuses:
+            default_idx = statuses.index(preset_filter)
+        f_status = st.selectbox("สถานะ", statuses, index=default_idx)
     with col2:
         if is_admin():
             sups = ["ทั้งหมด"] + db.get_unique_suppliers()
@@ -709,26 +714,15 @@ def render_po_view():
 
     st.write(f"**👤 ผู้สั่ง:** {po.get('created_by_name', '-')}")
 
-    # รายการสินค้า
+    # รายการสินค้า — interactive cards (คลิกดูรายละเอียดได้)
     st.markdown("### 📦 รายการ")
     if po.get('items'):
-        items_df = pd.DataFrame(po['items'])
-        cols_show = ['name', 'qty', 'unit']
-        if is_admin():
-            cols_show += ['unit_price', 'subtotal']
-        cols_show = [c for c in cols_show if c in items_df.columns]
+        # ดึงข้อมูล equipment ล่วงหน้า (เพื่อแสดงรูป + รายละเอียด)
+        eq_list = db.get_equipment_list()
+        eq_map = {e['id']: e for e in eq_list}
 
-        col_config = {
-            'name': 'รายการ',
-            'qty': st.column_config.NumberColumn('จำนวน', format="%d"),
-            'unit': 'หน่วย',
-        }
-        if is_admin():
-            col_config['unit_price'] = st.column_config.NumberColumn('ราคา/หน่วย', format="฿%.2f")
-            col_config['subtotal'] = st.column_config.NumberColumn('รวม', format="฿%.2f")
-
-        st.dataframe(items_df[cols_show], column_config=col_config,
-                      hide_index=True, use_container_width=True)
+        for idx, item in enumerate(po['items']):
+            _render_item_row(item, idx, eq_map, po['id'])
 
     # ยอดสุทธิ (admin)
     if is_admin() and po.get('total'):
@@ -836,6 +830,118 @@ def render_po_view():
 # ==================================================================
 # Progress Bar
 # ==================================================================
+
+def _render_item_row(item, idx, eq_map, po_id):
+    """แสดงรายการสินค้า 1 บรรทัด + กด expand ดูรายละเอียดเต็มได้"""
+    eq_id = item.get('equipment_id')
+    eq = eq_map.get(eq_id) if eq_id else None
+
+    # กล่องรายการ
+    with st.container(border=True):
+        # แถวบน: รูป + ชื่อ + จำนวน + ราคา + ปุ่มดู
+        cols = st.columns([0.6, 4, 1.5, 2, 1])
+
+        # รูป
+        with cols[0]:
+            if eq and eq.get('image_url'):
+                try:
+                    st.image(eq['image_url'], width=50)
+                except Exception:
+                    st.markdown("🧴")
+            else:
+                st.markdown('<div style="font-size:32px;">🧴</div>',
+                              unsafe_allow_html=True)
+
+        # ชื่อ + SKU
+        with cols[1]:
+            st.markdown(f"**{item.get('name', '-')}**")
+            if eq:
+                st.caption(f"SKU: {eq.get('sku') or '-'}  |  📂 {eq.get('category', '-')}")
+            elif not eq_id:
+                st.caption("✏️ พิมพ์เอง (ไม่ได้อยู่ใน catalog)")
+            if item.get('notes'):
+                st.caption(f"💬 {item['notes']}")
+
+        # จำนวน
+        with cols[2]:
+            st.markdown(f"<div style='text-align:right; padding-top:8px;'>"
+                         f"<b>{item.get('qty', 0):,.0f}</b> {item.get('unit', '')}"
+                         f"</div>", unsafe_allow_html=True)
+
+        # ราคา (admin only)
+        with cols[3]:
+            if is_admin():
+                price = item.get('unit_price', 0)
+                subtotal = item.get('subtotal', 0)
+                if price > 0:
+                    st.markdown(
+                        f"<div style='text-align:right; padding-top:8px;'>"
+                        f"<span style='color:#888; font-size:11px;'>"
+                        f"@฿{price:,.2f}</span><br>"
+                        f"<b style='color:#C8A47E;'>฿{subtotal:,.2f}</b>"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+
+        # ปุ่มดูรายละเอียด
+        with cols[4]:
+            detail_key = f"item_detail_{po_id}_{idx}"
+            is_open = st.session_state.get(detail_key, False)
+            if eq:  # มีข้อมูล equipment ให้ดู
+                if st.button("👁️" if not is_open else "▲",
+                              key=f"btn_detail_{po_id}_{idx}",
+                              use_container_width=True,
+                              help="ดูรายละเอียดสินค้า"):
+                    st.session_state[detail_key] = not is_open
+                    st.rerun()
+
+        # Detail expanded section
+        if eq and st.session_state.get(detail_key):
+            st.markdown("---")
+            dc1, dc2 = st.columns([1, 2])
+            with dc1:
+                if eq.get('image_url'):
+                    try:
+                        st.image(eq['image_url'], use_container_width=True)
+                    except Exception:
+                        pass
+            with dc2:
+                st.markdown(f"### {eq.get('name', '-')}")
+                st.caption(f"📦 SKU: **{eq.get('sku') or '-'}**")
+
+                meta_c1, meta_c2 = st.columns(2)
+                with meta_c1:
+                    st.markdown(f"📂 **หมวด:** {eq.get('category', '-')}")
+                    st.markdown(f"📐 **หน่วย:** {eq.get('unit', 'ชิ้น')}")
+                with meta_c2:
+                    stock = eq.get('stock', 0)
+                    if stock == 0:
+                        stock_color = "#A32D2D"
+                        stock_emoji = "🔴"
+                    elif stock < 10:
+                        stock_color = "#BA7517"
+                        stock_emoji = "🟡"
+                    else:
+                        stock_color = "#1D9E75"
+                        stock_emoji = "🟢"
+                    st.markdown(
+                        f'<div>{stock_emoji} <b>คงเหลือ:</b> '
+                        f'<span style="color:{stock_color}; font-weight:500;">'
+                        f'{stock:,} {eq.get("unit", "ชิ้น")}</span></div>',
+                        unsafe_allow_html=True,
+                    )
+                    if is_admin():
+                        st.markdown(
+                            f'💰 <b>ต้นทุนล่าสุด:</b> '
+                            f'<span style="color:#C8A47E;">'
+                            f'฿{eq.get("last_cost", 0):,.2f}</span>',
+                            unsafe_allow_html=True,
+                        )
+
+                if eq.get('description'):
+                    st.markdown("**📝 รายละเอียด:**")
+                    st.write(eq['description'])
+
 
 def render_progress_bar(current_status):
     """visual workflow"""
