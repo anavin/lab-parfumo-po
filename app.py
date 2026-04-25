@@ -810,18 +810,31 @@ def render_dashboard():
 
     st.divider()
 
-    # ภาพรวมสถานะ
+    # ภาพรวมสถานะ — คลิกการ์ดเพื่อ filter ดูในรายการ
     st.markdown("### 📊 ภาพรวมสถานะ")
+    st.caption("คลิกที่สถานะเพื่อดูรายการ PO")
+
     status_count = {}
     for p in pos:
         status_count[p['status']] = status_count.get(p['status'], 0) + 1
 
+    # ใช้ CSS เดียวกับ KPI cards
     cols = st.columns(len(db.PO_STATUSES))
     for col, status in zip(cols, db.PO_STATUSES):
         with col:
             emoji = STATUS_EMOJI.get(status, '')
             count = status_count.get(status, 0)
-            st.metric(f"{emoji} {status}", count)
+            # ตัดชื่อสถานะให้สั้นถ้ายาว
+            short_status = status if len(status) <= 12 else status[:11] + "…"
+            st.markdown('<div class="kpi-button">', unsafe_allow_html=True)
+            if st.button(
+                f"{emoji} **{short_status}**\n\n# {count}",
+                key=f"status_card_{status}",
+                use_container_width=True,
+                help=f"คลิกเพื่อดู PO สถานะ '{status}'",
+            ):
+                goto_po_list(status)
+            st.markdown('</div>', unsafe_allow_html=True)
 
 
 # ==================================================================
