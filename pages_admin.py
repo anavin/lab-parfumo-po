@@ -29,6 +29,104 @@ def render_equipment():
     st.markdown("## 📦 จัดการ Catalog สินค้า")
     st.caption("คลังข้อมูลสินค้า/อุปกรณ์ทั้งหมด — ทีมจะใช้สั่งซื้อจากที่นี่")
 
+    # ===== จัดการหมวดหมู่ =====
+    with st.expander("📂 จัดการหมวดหมู่"):
+        cats = db.get_categories()
+
+        # แสดงหมวดที่มี + ปุ่มแก้/ลบ
+        if cats:
+            st.markdown("##### หมวดทั้งหมด")
+            for cat in cats:
+                count = db.count_equipment_by_category(cat)
+                cc1, cc2, cc3, cc4 = st.columns([3, 1.5, 1, 1])
+                with cc1:
+                    edit_cat_key = f'edit_cat_{cat}'
+                    if st.session_state.get(edit_cat_key):
+                        new_name = st.text_input(
+                            f"แก้ชื่อ: {cat}",
+                            value=cat,
+                            key=f'edit_cat_input_{cat}',
+                            label_visibility="collapsed",
+                        )
+                    else:
+                        st.markdown(f"📂 **{cat}**")
+                with cc2:
+                    if count > 0:
+                        st.caption(f"📦 {count} รายการ")
+                    else:
+                        st.caption("📦 (ว่าง)")
+                with cc3:
+                    edit_cat_key = f'edit_cat_{cat}'
+                    if st.session_state.get(edit_cat_key):
+                        if st.button("💾", key=f'sv_cat_{cat}',
+                                      use_container_width=True,
+                                      help="บันทึก"):
+                            new = st.session_state.get(f'edit_cat_input_{cat}', cat).strip()
+                            if new and new != cat:
+                                if new in cats:
+                                    st.error("มีชื่อนี้อยู่แล้ว")
+                                else:
+                                    if db.update_category(cat, new):
+                                        st.session_state.pop(edit_cat_key, None)
+                                        st.success("อัปเดตแล้ว")
+                                        st.rerun()
+                            else:
+                                st.session_state.pop(edit_cat_key, None)
+                                st.rerun()
+                    else:
+                        if st.button("✏️", key=f'ed_cat_{cat}',
+                                      use_container_width=True,
+                                      help="แก้ไข"):
+                            st.session_state[edit_cat_key] = True
+                            st.rerun()
+                with cc4:
+                    del_cat_key = f'del_cat_{cat}'
+                    if st.session_state.get(del_cat_key):
+                        if st.button("⚠️", key=f'cd_cat_{cat}',
+                                      use_container_width=True,
+                                      help="ยืนยันลบ"):
+                            ok, msg = db.delete_category(cat)
+                            if ok:
+                                st.session_state.pop(del_cat_key, None)
+                                st.success("ลบเรียบร้อย")
+                                st.rerun()
+                            else:
+                                st.error(f"ลบไม่ได้: {msg}")
+                                st.session_state.pop(del_cat_key, None)
+                    else:
+                        if st.button("🗑️", key=f'd_cat_{cat}',
+                                      use_container_width=True,
+                                      help="ลบ"):
+                            st.session_state[del_cat_key] = True
+                            st.rerun()
+
+        st.divider()
+
+        # เพิ่มหมวดใหม่
+        st.markdown("##### ➕ เพิ่มหมวดใหม่")
+        with st.form("add_cat_form", clear_on_submit=True):
+            ac1, ac2 = st.columns([3, 1])
+            with ac1:
+                new_cat = st.text_input(
+                    "ชื่อหมวด",
+                    placeholder="เช่น น้ำหอม / กล่องของขวัญ / สเปรย์",
+                    label_visibility="collapsed",
+                )
+            with ac2:
+                if st.form_submit_button("➕ เพิ่ม", type="primary",
+                                            use_container_width=True):
+                    nc = new_cat.strip()
+                    if not nc:
+                        st.error("กรอกชื่อหมวด")
+                    elif nc in cats:
+                        st.error(f"มี '{nc}' อยู่แล้ว")
+                    else:
+                        if db.add_category(nc):
+                            st.success(f"เพิ่ม '{nc}' แล้ว")
+                            st.rerun()
+                        else:
+                            st.error("เพิ่มไม่สำเร็จ")
+
     with st.expander("➕ เพิ่มอุปกรณ์ใหม่"):
         with st.form("ae", clear_on_submit=True):
             c1, c2 = st.columns(2)

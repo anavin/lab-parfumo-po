@@ -217,6 +217,44 @@ def add_category(name):
         return False
 
 
+def update_category(old_name, new_name):
+    """เปลี่ยนชื่อหมวด + อัปเดต equipment ที่อ้างถึง"""
+    try:
+        sb = get_supabase()
+        # 1) update ชื่อหมวด
+        sb.table("equipment_categories").update({"name": new_name}).eq("name", old_name).execute()
+        # 2) อัปเดต equipment ที่ใช้หมวดเดิม
+        sb.table("equipment").update({"category": new_name}).eq("category", old_name).execute()
+        return True
+    except Exception as e:
+        st.error(f"แก้ไขไม่สำเร็จ: {e}")
+        return False
+
+
+def delete_category(name):
+    """ลบหมวด — ต้องไม่มีสินค้าอยู่ในหมวดนี้"""
+    try:
+        sb = get_supabase()
+        # ตรวจว่ามีสินค้าใน category นี้หรือเปล่า
+        c = sb.table("equipment").select("id", count="exact").eq("category", name).eq("is_active", True).execute()
+        if c.count and c.count > 0:
+            return False, f"มีสินค้า {c.count} รายการในหมวดนี้ — ย้ายหรือลบสินค้าก่อน"
+        sb.table("equipment_categories").delete().eq("name", name).execute()
+        return True, "ลบเรียบร้อย"
+    except Exception as e:
+        return False, str(e)
+
+
+def count_equipment_by_category(name):
+    """นับจำนวนสินค้า active ในหมวด"""
+    try:
+        sb = get_supabase()
+        r = sb.table("equipment").select("id", count="exact").eq("category", name).eq("is_active", True).execute()
+        return r.count or 0
+    except Exception:
+        return 0
+
+
 # --- Image upload ---
 def upload_image(file_bytes, filename, bucket=IMG_EQ):
     sb = get_supabase()
