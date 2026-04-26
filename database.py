@@ -724,6 +724,102 @@ def get_low_stock_equipment(threshold=10):
         return []
 
 
+# ===== Stock Withdrawal — เบิกสินค้าไปใช้ =====
+def create_withdrawal(equipment_id, qty, purpose, withdrawn_by, withdrawn_by_name,
+                       withdrawn_at=None, notes=""):
+    """บันทึกการเบิก + ตัดสต๊อกทันที — return withdrawal record หรือ None"""
+    try:
+        sb = get_supabase()
+        # ดึงข้อมูล equipment
+        eq_r = sb.table("equipment").select("*").eq("id", equipment_id).execute()
+        if not eq_r.data:
+            st.error("ไม่พบสินค้านี้ในระบบ")
+            return None
+        eq = eq_r.data[0]
+        current_stock = float(eq.get('stock', 0) or 0)
+        qty = float(qty)
+
+        if qty <= 0:
+            st.error("จำนวนต้องมากกว่า 0")
+            return None
+        if qty > current_stock:
+            st.error(f"❌ สต็อกไม่พอ — มีเหลือ {current_stock:,.0f} {eq.get('unit', 'ชิ้น')}")
+            return None
+
+        # บันทึกการเบิก
+        payload = {
+            "equipment_id": equipment_id,
+            "equipment_name": eq.get('name', ''),
+            "qty": qty,
+            "unit": eq.get('unit', 'ชิ้น'),
+            "purpose": purpose or '',
+            "withdrawn_by": withdrawn_by,
+            "withdrawn_by_name": withdrawn_by_name or '',
+            "notes": notes or '',
+        }
+        if withdrawn_at:
+            # date หรือ datetime → ISO string
+            if hasattr(withdrawn_at, 'isoformat'):
+                payload["withdrawn_at"] = withdrawn_at.isoformat()
+            else:
+                payload["withdrawn_at"] = str(withdrawn_at)
+
+        r = sb.table("withdrawals").insert(payload).execute()
+        if not r.data:
+            return None
+
+        # ตัดสต๊อก
+        new_stock = current_stock - qty
+        sb.table("equipment").update({"stock": new_stock}).eq("id", equipment_id).execute()
+
+        return r.data[0]
+    except Exception as e:
+        st.error(f"เบิกไม่สำเร็จ: {e}")
+        return None
+
+
+def get_withdrawals(equipment_id=None, user_id=None, limit=200,
+                      start_date=None, end_date=None):
+    """ดึงประวัติการเบิก — filter ได้ตามสินค้า/user/ช่วงเวลา"""
+    try:
+        sb = get_supabase()
+        q = sb.table("withdrawals").select("*").order("withdrawn_at", desc=True).limit(limit)
+        if equipment_id:
+            q = q.eq("equipment_id", equipment_id)
+        if user_id:
+            q = q.eq("withdrawn_by", user_id)
+        if start_date:
+            q = q.gte("withdrawn_at",
+                       start_date.isoformat() if hasattr(start_date, 'isoformat') else str(start_date))
+        if end_date:
+            q = q.lte("withdrawn_at",
+                       end_date.isoformat() if hasattr(end_date, 'isoformat') else str(end_date))
+        return q.execute().data or []
+    except Exception:
+        return []
+
+
+def delete_withdrawal(withdrawal_id, restore_stock=True):
+    """ลบรายการเบิก (admin) — option คืนสต๊อก"""
+    try:
+        sb = get_supabase()
+        if restore_stock:
+            # ดึงข้อมูลก่อนลบ
+            r = sb.table("withdrawals").select("*").eq("id", withdrawal_id).execute()
+            if r.data:
+                w = r.data[0]
+                # คืนสต๊อก
+                eq_r = sb.table("equipment").select("stock").eq("id", w['equipment_id']).execute()
+                if eq_r.data:
+                    cur = float(eq_r.data[0].get('stock', 0) or 0)
+                    new_stock = cur + float(w.get('qty', 0) or 0)
+                    sb.table("equipment").update({"stock": new_stock}).eq("id", w['equipment_id']).execute()
+        sb.table("withdrawals").delete().eq("id", withdrawal_id).execute()
+        return True
+    except Exception:
+        return False
+
+
 # ===== Draft PO (Auto-save) =====
 def save_po_draft(user_id, items, notes=""):
     """บันทึก draft PO — มีได้ 1 ใบต่อ user (upsert)"""

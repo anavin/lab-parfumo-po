@@ -511,6 +511,8 @@ def render_header():
         modes = [('dashboard', '📊 Dashboard'), ('po_list', '📝 ใบ PO')]
         # เมนู "รอรับของ" — staff ทุกคนเห็น (รวม admin)
         modes.append(('pending_receipt', '📦 รอรับของ'))
+        # เมนู "เบิกสินค้า" — ทุกคนเบิกได้
+        modes.append(('withdraw', '📤 เบิกสินค้า'))
         if is_admin():
             modes += [
                 ('equipment', '📦 Catalog'),
@@ -1068,6 +1070,7 @@ from pages_po import (render_po_list, render_po_create, render_po_view,
                        render_pending_receipt)
 from pages_admin import (render_equipment, render_reports,
                           render_users, render_notifications)
+from pages_withdraw import render_withdraw
 
 
 # ==================================================================
@@ -1198,6 +1201,8 @@ def main():
         render_po_view()
     elif mode == 'pending_receipt':
         render_pending_receipt()
+    elif mode == 'withdraw':
+        render_withdraw()
     elif mode == 'equipment':
         if not is_admin():
             st.error("❌ เฉพาะแอดมิน")
