@@ -1021,11 +1021,21 @@ def create_withdrawal(equipment_id, qty, purpose, withdrawn_by, withdrawn_by_nam
             "notes": notes or '',
         }
         if withdrawn_at:
-            # date หรือ datetime → ISO string
+            # date หรือ datetime → เก็บเป็น datetime เสมอ (กัน sort ผิดเมื่อหลายรายการในวันเดียวกัน)
             if hasattr(withdrawn_at, 'isoformat'):
-                payload["withdrawn_at"] = withdrawn_at.isoformat()
+                # ถ้าเป็น date ล้วน (ไม่มี time) → บวกเวลาปัจจุบัน
+                if hasattr(withdrawn_at, 'hour'):
+                    payload["withdrawn_at"] = withdrawn_at.isoformat()
+                else:
+                    # date → datetime ของวันนั้น + เวลาปัจจุบัน
+                    now = datetime.now()
+                    dt = datetime.combine(withdrawn_at, now.time())
+                    payload["withdrawn_at"] = dt.isoformat()
             else:
                 payload["withdrawn_at"] = str(withdrawn_at)
+        else:
+            # ไม่ระบุ → ใช้ตอนนี้
+            payload["withdrawn_at"] = datetime.now().isoformat()
 
         r = sb.table("withdrawals").insert(payload).execute()
         if not r.data:

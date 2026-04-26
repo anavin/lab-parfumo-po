@@ -33,17 +33,25 @@ def _render_withdraw_form():
         st.info("ยังไม่มีสินค้าใน Catalog")
         return
 
-    # ===== Filter + Search =====
-    col1, col2 = st.columns([3, 2])
+    # ===== Filter + Search + Sort =====
+    col1, col2, col3 = st.columns([3, 2, 2])
     with col1:
         search = st.text_input(
             "🔍 ค้นหาสินค้า",
-            placeholder="พิมพ์ชื่อสินค้าหรือ SKU",
+            placeholder="ชื่อสินค้า / SKU",
             key="withdraw_search",
         ).strip().lower()
     with col2:
         cats = ["ทั้งหมด"] + db.get_categories()
         selected_cat = st.selectbox("📂 หมวด", cats, key="withdraw_cat")
+    with col3:
+        sort_by = st.selectbox(
+            "🔃 จัดเรียง",
+            ["ชื่อ A→Z", "ชื่อ Z→A",
+             "สต็อกมาก→น้อย", "สต็อกน้อย→มาก",
+             "หมวด"],
+            key="withdraw_sort",
+        )
 
     # Filter
     filtered = eq_list
@@ -61,6 +69,19 @@ def _render_withdraw_form():
                               key="withdraw_show_zero")
     if not show_zero:
         filtered = [e for e in filtered if (e.get('stock') or 0) > 0]
+
+    # Sort
+    if sort_by == "ชื่อ A→Z":
+        filtered = sorted(filtered, key=lambda e: (e.get('name') or '').lower())
+    elif sort_by == "ชื่อ Z→A":
+        filtered = sorted(filtered, key=lambda e: (e.get('name') or '').lower(), reverse=True)
+    elif sort_by == "สต็อกมาก→น้อย":
+        filtered = sorted(filtered, key=lambda e: float(e.get('stock') or 0), reverse=True)
+    elif sort_by == "สต็อกน้อย→มาก":
+        filtered = sorted(filtered, key=lambda e: float(e.get('stock') or 0))
+    elif sort_by == "หมวด":
+        filtered = sorted(filtered, key=lambda e: ((e.get('category') or 'zzz').lower(),
+                                                       (e.get('name') or '').lower()))
 
     st.caption(f"พบ **{len(filtered)}** รายการที่เบิกได้")
 
@@ -222,10 +243,10 @@ def _render_withdraw_card(eq):
 # ==================================================================
 
 def _render_withdraw_history():
-    """ประวัติการเบิก + filter"""
+    """ประวัติการเบิก + filter + search + sort"""
     user = current_user()
 
-    # ===== Filter =====
+    # ===== Row 1: Scope + Period + Equipment filter =====
     fc1, fc2, fc3 = st.columns(3)
     with fc1:
         # admin เห็นของทุกคน, staff เห็นของตัวเอง (default)
@@ -254,6 +275,23 @@ def _render_withdraw_history():
             key="hist_eq",
         )
 
+    # ===== Row 2: Search + Sort =====
+    sc1, sc2 = st.columns([3, 2])
+    with sc1:
+        search = st.text_input(
+            "🔍 ค้นหา",
+            placeholder="ชื่อสินค้า / วัตถุประสงค์ / ผู้เบิก",
+            key="hist_search",
+        ).strip().lower()
+    with sc2:
+        sort_by = st.selectbox(
+            "🔃 จัดเรียง",
+            ["วันที่ใหม่→เก่า", "วันที่เก่า→ใหม่",
+             "จำนวนมาก→น้อย", "จำนวนน้อย→มาก",
+             "ชื่อสินค้า A→Z"],
+            key="hist_sort",
+        )
+
     # ===== Build query =====
     user_id_filter = None if (is_admin() and scope == "ทุกคน") else uid()
 
@@ -276,6 +314,44 @@ def _render_withdraw_history():
         user_id=user_id_filter,
         start_date=start_date,
     )
+
+    # ===== Apply search =====
+    if search:
+        withdrawals = [
+            w for w in withdrawals
+            if search in (w.get('equipment_name') or '').lower()
+            or search in (w.get('purpose') or '').lower()
+            or search in (w.get('withdrawn_by_name') or '').lower()
+            or search in (w.get('notes') or '').lower()
+        ]
+
+    # ===== Apply sort =====
+    def _date_key(w):
+        """key สำหรับเรียงตามวันที่ — fallback เป็น created_at ถ้าวันที่เท่ากัน"""
+        try:
+            primary = datetime.fromisoformat(
+                (w.get('withdrawn_at') or '').replace('Z', '+00:00')
+            )
+        except Exception:
+            primary = datetime.min
+        try:
+            secondary = datetime.fromisoformat(
+                (w.get('created_at') or '').replace('Z', '+00:00')
+            )
+        except Exception:
+            secondary = datetime.min
+        return (primary, secondary)
+
+    if sort_by == "วันที่ใหม่→เก่า":
+        withdrawals = sorted(withdrawals, key=_date_key, reverse=True)
+    elif sort_by == "วันที่เก่า→ใหม่":
+        withdrawals = sorted(withdrawals, key=_date_key)
+    elif sort_by == "จำนวนมาก→น้อย":
+        withdrawals = sorted(withdrawals, key=lambda w: float(w.get('qty', 0) or 0), reverse=True)
+    elif sort_by == "จำนวนน้อย→มาก":
+        withdrawals = sorted(withdrawals, key=lambda w: float(w.get('qty', 0) or 0))
+    elif sort_by == "ชื่อสินค้า A→Z":
+        withdrawals = sorted(withdrawals, key=lambda w: (w.get('equipment_name') or '').lower())
 
     # ===== Summary =====
     if withdrawals:
