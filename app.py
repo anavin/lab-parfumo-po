@@ -1095,8 +1095,7 @@ def render_header():
 
                 if st.button(btn_label, use_container_width=True,
                               type="primary" if in_admin else "secondary",
-                              key="nav_admin_menu",
-                              help="Catalog / รายงาน / ผู้ใช้ / ตั้งค่า"):
+                              key="nav_admin_menu"):
                     st.session_state['show_admin_menu'] = (
                         not st.session_state.get('show_admin_menu', False)
                     )
@@ -1111,19 +1110,16 @@ def render_header():
         ac1, ac2, ac3 = st.columns(3)
         with ac1:
             if st.button("🔍", use_container_width=True,
-                          help="ค้นหา",
                           key="open_search"):
                 st.session_state['show_search'] = not st.session_state.get('show_search', False)
                 st.rerun()
         with ac2:
             if st.button(nb, use_container_width=True,
                           type="primary" if n_count else "secondary",
-                          help="แจ้งเตือน",
                           key="open_notif"):
                 _switch_mode('notifications')
         with ac3:
             if st.button("🚪", use_container_width=True,
-                          help="ออกจากระบบ",
                           key="logout_btn"):
                 _do_logout()
 
