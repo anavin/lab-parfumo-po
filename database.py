@@ -503,15 +503,102 @@ def remove_po_attachment(po_id, attachment_url):
 
 
 # --- Equipment ---
-def get_equipment_list(active_only=False):
+def get_equipment_list(active_only=False, include_pending=False):
+    """ดึงรายการ equipment — default แสดงเฉพาะที่ approved แล้ว"""
     try:
         sb = get_supabase()
         q = sb.table("equipment").select("*")
         if active_only:
             q = q.eq("is_active", True)
+        if not include_pending:
+            # ใช้ in_ เพื่อรวม approved + null (PO เก่าก่อน migration)
+            q = q.or_("approval_status.eq.approved,approval_status.is.null")
         return q.order("created_at", desc=True).execute().data or []
     except Exception:
         return []
+
+
+def get_pending_equipment():
+    """ดึง equipment ที่ user เสนอให้เพิ่ม (รออนุมัติ)"""
+    try:
+        sb = get_supabase()
+        return sb.table("equipment").select("*").eq(
+            "approval_status", "pending"
+        ).order("suggested_at", desc=True).execute().data or []
+    except Exception:
+        return []
+
+
+def suggest_equipment_from_po(name, suggested_by, suggested_by_name,
+                                 suggested_from_po, suggested_notes="",
+                                 unit="ชิ้น", image_urls=None):
+    """user สร้าง PO ด้วยรายการที่ไม่มีในระบบ → สร้าง equipment draft (pending)
+    return equipment_id
+    """
+    try:
+        sb = get_supabase()
+        # generate temporary SKU
+        temp_sku = f"PENDING-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        payload = {
+            "sku": temp_sku,
+            "name": name,
+            "category": "(รออนุมัติ)",
+            "unit": unit,
+            "description": suggested_notes or "",
+            "last_cost": 0,
+            "stock": 0,
+            "image_url": image_urls[0] if image_urls else "",
+            "image_urls": image_urls or [],
+            "is_active": True,
+            "approval_status": "pending",
+            "suggested_by": suggested_by,
+            "suggested_by_name": suggested_by_name,
+            "suggested_at": datetime.now().isoformat(),
+            "suggested_from_po": suggested_from_po,
+            "suggested_notes": suggested_notes,
+        }
+        r = sb.table("equipment").insert(payload).execute()
+        return r.data[0] if r.data else None
+    except Exception as e:
+        st.error(f"เพิ่มสินค้า pending ไม่สำเร็จ: {e}")
+        return None
+
+
+def approve_equipment(eq_id, sku, name, category, unit, description,
+                        last_cost=0, stock=0, approved_by_name=""):
+    """อนุมัติ equipment ที่ pending → เปลี่ยนเป็น approved + admin กรอกข้อมูลครบ"""
+    try:
+        sb = get_supabase()
+        payload = {
+            "sku": sku,
+            "name": name,
+            "category": category,
+            "unit": unit or "ชิ้น",
+            "description": description or "",
+            "last_cost": float(last_cost or 0),
+            "stock": int(stock or 0),
+            "approval_status": "approved",
+            "approved_by_name": approved_by_name,
+            "approved_at": datetime.now().isoformat(),
+        }
+        sb.table("equipment").update(payload).eq("id", eq_id).execute()
+
+        # Update items ทุก PO ที่อ้างถึง equipment นี้ (ตอนนี้ user อาจไม่ได้ใส่ equipment_id)
+        # → ระบบรองรับโดยอัตโนมัติเพราะ items.image_urls + name ถูกเก็บอยู่แล้ว
+        return True
+    except Exception as e:
+        st.error(f"อนุมัติไม่สำเร็จ: {e}")
+        return False
+
+
+def reject_equipment(eq_id, reason="", admin_name=""):
+    """ปฏิเสธ equipment pending → ลบทิ้ง"""
+    try:
+        sb = get_supabase()
+        sb.table("equipment").delete().eq("id", eq_id).execute()
+        return True
+    except Exception:
+        return False
 
 
 def get_equipment(eid):
@@ -680,6 +767,42 @@ def create_purchase_order(items, purpose="", notes="", created_by=None, created_
         }).execute().data[0]
         log_activity(po["id"], created_by_name, "requester", "created",
                       f"สร้าง PO มี {len(items)} รายการ")
+
+        # ===== Auto: สร้าง pending equipment สำหรับรายการที่ "พิมพ์เอง" =====
+        # → admin จะเห็นใน dashboard + อนุมัติเข้า catalog ได้
+        for idx, it in enumerate(items):
+            if not it.get('equipment_id') and it.get('name'):
+                # custom item → สร้าง pending equipment + link กลับไปที่ items[idx]
+                pending = suggest_equipment_from_po(
+                    name=it.get('name'),
+                    suggested_by=created_by,
+                    suggested_by_name=created_by_name,
+                    suggested_from_po=po['id'],
+                    suggested_notes=it.get('notes', ''),
+                    unit=it.get('unit', 'ชิ้น'),
+                    image_urls=it.get('image_urls') or [],
+                )
+                if pending:
+                    # link items ใน PO กับ equipment_id ที่เพิ่งสร้าง
+                    clean[idx]['equipment_id'] = pending['id']
+
+        # update PO items ใหม่หลังสร้าง pending eq (ถ้ามี)
+        has_pending = any(
+            it.get('equipment_id') for it in clean
+            if not items[clean.index(it) if it in clean else 0].get('equipment_id')
+        )
+        # safer way: ตรวจว่า items มี linkage ไป pending eq หรือไม่
+        any_linked = False
+        for orig, c in zip(items, clean):
+            if not orig.get('equipment_id') and c.get('equipment_id'):
+                any_linked = True
+                break
+        if any_linked:
+            sb.table("purchase_orders").update({
+                "items": clean,
+            }).eq("id", po['id']).execute()
+            po['items'] = clean
+
         return po
     except Exception as e:
         st.error(f"สร้างไม่สำเร็จ: {e}")

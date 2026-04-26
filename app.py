@@ -707,6 +707,29 @@ def render_alerts():
             unsafe_allow_html=True,
         )
 
+    # ===== Pending equipment (admin only) =====
+    if is_admin():
+        pending_eq = db.get_pending_equipment()
+        if pending_eq:
+            names = ", ".join(e.get('name', '-') for e in pending_eq[:3])
+            if len(pending_eq) > 3:
+                names += f" และอีก {len(pending_eq) - 3} รายการ"
+            c1, c2 = st.columns([5, 1])
+            with c1:
+                st.markdown(
+                    f'<div class="alert" style="background:#FFF3D6; '
+                    f'border-left:4px solid #BA7517; color:#5a4202;">'
+                    f'<b>🔔 มี {len(pending_eq)} รายการใหม่รออนุมัติ '
+                    f'เพิ่มเข้า Catalog:</b> {names}'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            with c2:
+                if st.button("⚙️ ไปดู", key="goto_pending_eq",
+                              use_container_width=True):
+                    st.session_state['mode'] = 'equipment'
+                    st.rerun()
+
 
 # ==================================================================
 # Dashboard
