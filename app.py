@@ -29,287 +29,9 @@ st.set_page_config(
 
 st.markdown("""
 <meta name="color-scheme" content="light">
-<meta name="theme-color" content="#FFFFFF">
 <style>
     /* ============================================ */
-    /* FORCE LIGHT MODE — สูงสุด                    */
-    /* ============================================ */
-
-    /* Disable user-agent dark mode (browser/OS level) */
-    :root {
-        color-scheme: light only !important;
-        --background-color: #FFFFFF !important;
-        --secondary-background-color: #F4F6FA !important;
-        --text-color: #1F2937 !important;
-    }
-
-    /* บังคับ light mode — แม้ user เปลี่ยน Streamlit settings เป็น dark */
-    html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"],
-    .main, .stApp, [data-testid="stHeader"], [data-testid="stSidebar"],
-    [data-testid="stSidebarContent"], section[data-testid="stSidebar"] {
-        background-color: #FFFFFF !important;
-        color: #1F2937 !important;
-        color-scheme: light only !important;
-    }
-
-    /* Override @media dark — ถ้า user ระบบเป็น dark mode */
-    @media (prefers-color-scheme: dark) {
-        html, body, .stApp, [data-testid="stAppViewContainer"],
-        [data-testid="stMain"], [data-testid="stHeader"] {
-            background-color: #FFFFFF !important;
-            color: #1F2937 !important;
-        }
-    }
-
-    /* บังคับ text element ทุกที่เป็นสีดำ */
-    .stApp p, .stApp span, .stApp div, .stApp label, .stApp li, .stApp td, .stApp th,
-    .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6,
-    .stApp strong, .stApp b, .stApp em, .stApp i,
-    .stMarkdown, .stMarkdown p, .stMarkdown span, .stMarkdown div,
-    .stMarkdown li, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4,
-    .stMarkdown strong, .stMarkdown b, .stMarkdown em,
-    [data-testid="stMarkdownContainer"] > div,
-    [data-testid="stMarkdownContainer"] > div > p,
-    [data-testid="stCaptionContainer"], [data-testid="stText"] {
-        color: #1F2937;
-    }
-
-    /* Caption ใช้สีเทา */
-    [data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] *,
-    .stCaption, small {
-        color: #6B7280 !important;
-    }
-
-    /* Inputs (text/number/textarea) — bg ขาว text ดำ */
-    .stTextInput input, .stNumberInput input, .stTextArea textarea,
-    .stDateInput input, .stTimeInput input,
-    [data-baseweb="input"] input, [data-baseweb="textarea"] textarea,
-    [data-baseweb="select"] [role="button"], [data-baseweb="select"] input,
-    .stSelectbox [data-baseweb="select"] > div, .stMultiSelect [data-baseweb="select"] > div {
-        background-color: #FFFFFF !important;
-        color: #1F2937 !important;
-        border-color: #D1D5DB !important;
-    }
-    .stTextInput input::placeholder, .stTextArea textarea::placeholder,
-    .stNumberInput input::placeholder, .stDateInput input::placeholder {
-        color: #9CA3AF !important;
-    }
-
-    /* Select dropdowns / popovers */
-    [data-baseweb="popover"], [data-baseweb="menu"], [data-baseweb="list"],
-    [role="listbox"], [role="option"] {
-        background-color: #FFFFFF !important;
-        color: #1F2937 !important;
-    }
-    [role="option"]:hover, [role="option"][aria-selected="true"] {
-        background-color: #F4F6FA !important;
-        color: #1F2937 !important;
-    }
-
-    /* File uploader */
-    [data-testid="stFileUploader"], [data-testid="stFileUploader"] section,
-    [data-testid="stFileUploaderDropzone"] {
-        background-color: #F9FAFB !important;
-        color: #1F2937 !important;
-        border-color: #D1D5DB !important;
-    }
-    [data-testid="stFileUploader"] *, [data-testid="stFileUploader"] small {
-        color: #1F2937 !important;
-    }
-
-    /* Buttons — secondary (ปุ่มขาว) */
-    .stButton button[kind="secondary"], .stDownloadButton button[kind="secondary"],
-    .stFormSubmitButton button[kind="secondary"] {
-        background-color: #FFFFFF !important;
-        color: #1F2937 !important;
-        border: 1px solid #D1D5DB !important;
-    }
-    .stButton button[kind="secondary"] *,
-    .stButton button[kind="secondary"] p,
-    .stButton button[kind="secondary"] div,
-    .stButton button[kind="secondary"] span {
-        color: #1F2937 !important;
-    }
-    /* secondary hover/focus/active — ทุก state */
-    .stButton button[kind="secondary"]:hover,
-    .stButton button[kind="secondary"]:focus,
-    .stButton button[kind="secondary"]:focus-visible,
-    .stButton button[kind="secondary"]:active,
-    .stDownloadButton button[kind="secondary"]:hover,
-    .stFormSubmitButton button[kind="secondary"]:hover {
-        background-color: #F4F6FA !important;
-        border-color: #4A6FA5 !important;
-        color: #4A6FA5 !important;
-        outline: none !important;
-        box-shadow: 0 0 0 2px rgba(74, 111, 165, 0.15) !important;
-    }
-    /* child element ใน secondary hover ก็ต้อง override ด้วย */
-    .stButton button[kind="secondary"]:hover *,
-    .stButton button[kind="secondary"]:hover p,
-    .stButton button[kind="secondary"]:hover div,
-    .stButton button[kind="secondary"]:hover span,
-    .stButton button[kind="secondary"]:focus *,
-    .stButton button[kind="secondary"]:focus p,
-    .stButton button[kind="secondary"]:active *,
-    .stDownloadButton button[kind="secondary"]:hover *,
-    .stFormSubmitButton button[kind="secondary"]:hover * {
-        color: #4A6FA5 !important;
-    }
-
-    /* Buttons — primary (ปุ่มน้ำเงิน) — ตัวหนังสือต้องขาวเสมอ */
-    .stButton button[kind="primary"], .stDownloadButton button[kind="primary"],
-    .stFormSubmitButton button[kind="primary"] {
-        background-color: #4A6FA5 !important;
-        color: #FFFFFF !important;
-        border: 1px solid #4A6FA5 !important;
-    }
-    .stButton button[kind="primary"] *,
-    .stButton button[kind="primary"] p,
-    .stButton button[kind="primary"] div,
-    .stButton button[kind="primary"] span {
-        color: #FFFFFF !important;
-    }
-    .stButton button[kind="primary"]:hover,
-    .stButton button[kind="primary"]:focus,
-    .stButton button[kind="primary"]:focus-visible,
-    .stButton button[kind="primary"]:active {
-        background-color: #3A5A8C !important;
-        border-color: #3A5A8C !important;
-        color: #FFFFFF !important;
-        outline: none !important;
-        box-shadow: 0 0 0 2px rgba(74, 111, 165, 0.3) !important;
-    }
-    .stButton button[kind="primary"]:hover *,
-    .stButton button[kind="primary"]:hover p,
-    .stButton button[kind="primary"]:hover div,
-    .stButton button[kind="primary"]:hover span,
-    .stButton button[kind="primary"]:focus *,
-    .stButton button[kind="primary"]:active * {
-        color: #FFFFFF !important;
-    }
-
-    /* Streamlit ใช้ <button> โดยไม่มี kind ในบางที่ — fallback */
-    .stButton > button:not([kind="primary"]),
-    .stDownloadButton > button:not([kind="primary"]),
-    .stFormSubmitButton > button:not([kind="primary"]) {
-        background-color: #FFFFFF !important;
-        color: #1F2937 !important;
-        border: 1px solid #D1D5DB !important;
-    }
-    .stButton > button:not([kind="primary"]):hover,
-    .stButton > button:not([kind="primary"]):focus,
-    .stDownloadButton > button:not([kind="primary"]):hover {
-        background-color: #F4F6FA !important;
-        border-color: #4A6FA5 !important;
-        color: #4A6FA5 !important;
-    }
-    .stButton > button:not([kind="primary"]):hover *,
-    .stButton > button:not([kind="primary"]):focus * {
-        color: #4A6FA5 !important;
-    }
-
-        /* Tabs */
-    .stTabs [data-baseweb="tab-list"] {
-        background-color: #FFFFFF !important;
-        border-bottom: 1px solid #E5E7EB !important;
-    }
-    .stTabs [data-baseweb="tab"] {
-        color: #6B7280 !important;
-    }
-    .stTabs [data-baseweb="tab"][aria-selected="true"] {
-        color: #4A6FA5 !important;
-        border-bottom-color: #4A6FA5 !important;
-    }
-
-    /* Expander */
-    .streamlit-expanderHeader, [data-testid="stExpander"],
-    [data-testid="stExpander"] summary {
-        background-color: #F4F6FA !important;
-        color: #1F2937 !important;
-    }
-    [data-testid="stExpander"] details > div {
-        background-color: #FFFFFF !important;
-    }
-
-    /* Container with border */
-    [data-testid="stVerticalBlockBorderWrapper"],
-    [data-testid="stHorizontalBlock"] [data-testid="stVerticalBlock"] {
-        background-color: transparent !important;
-    }
-    [data-testid="stContainer"][data-testid*="border"] {
-        background-color: #FFFFFF !important;
-        border-color: #E5E7EB !important;
-    }
-
-    /* Metric */
-    [data-testid="stMetric"], [data-testid="stMetricValue"],
-    [data-testid="stMetricLabel"], [data-testid="stMetricDelta"] {
-        color: #1F2937 !important;
-    }
-    [data-testid="stMetricLabel"] * { color: #6B7280 !important; }
-    [data-testid="stMetricValue"] * { color: #1F2937 !important; }
-
-    /* Alert/Info/Warning/Success/Error boxes */
-    [data-testid="stAlert"] {
-        color: #1F2937 !important;
-    }
-    [data-testid="stAlert"] * {
-        color: inherit !important;
-    }
-    /* info — blue */
-    [data-testid="stAlert"][kind="info"], div[data-baseweb="notification"][kind="info"] {
-        background-color: #DBEAFE !important;
-        color: #1E3A8A !important;
-    }
-    /* success — green */
-    [data-testid="stAlert"][kind="success"] {
-        background-color: #D1FAE5 !important;
-        color: #065F46 !important;
-    }
-    /* warning — yellow */
-    [data-testid="stAlert"][kind="warning"] {
-        background-color: #FEF3C7 !important;
-        color: #92400E !important;
-    }
-    /* error — red */
-    [data-testid="stAlert"][kind="error"] {
-        background-color: #FEE2E2 !important;
-        color: #991B1B !important;
-    }
-
-    /* Radio + Checkbox */
-    .stRadio label, .stCheckbox label, .stRadio label *, .stCheckbox label * {
-        color: #1F2937 !important;
-    }
-
-    /* Sliders */
-    .stSlider [data-baseweb="slider"] * { color: #1F2937 !important; }
-
-    /* Code blocks */
-    .stCodeBlock, code {
-        background-color: #F3F4F6 !important;
-        color: #4A6FA5 !important;
-    }
-
-    /* Dataframe / Tables */
-    .stDataFrame, [data-testid="stDataFrame"], .stTable {
-        background-color: #FFFFFF !important;
-        color: #1F2937 !important;
-    }
-    .stDataFrame *, .stTable * { color: #1F2937 !important; }
-
-    /* Divider */
-    hr, [data-testid="stDivider"] {
-        border-color: #E5E7EB !important;
-    }
-
-    /* Top toolbar (Streamlit's "Deploy" / Settings / Hamburger) */
-    [data-testid="stToolbar"], [data-testid="stDecoration"] {
-        background-color: transparent !important;
-    }
-
-    /* ============================================ */
-    /* Lab Parfumo Premium Theme                    */
+    /* Lab Parfumo Premium Theme — Steel Blue       */
     /* ============================================ */
 
     :root {
@@ -328,17 +50,23 @@ st.markdown("""
         --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
         --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
         --shadow-blue: 0 4px 16px rgba(74, 111, 165, 0.2);
-        /* legacy aliases for back-compat */
         --gold: #4A6FA5;
         --gold-dark: #3A5A8C;
         --gold-light: #A8C0E0;
         --gold-soft: rgba(74, 111, 165, 0.08);
         --shadow-gold: 0 4px 16px rgba(74, 111, 165, 0.2);
+        color-scheme: light;
     }
 
-    /* ----- Headings ----- */
+    /* Force light backgrounds */
+    html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"], [data-testid="stHeader"] {
+        background-color: #FFFFFF;
+        color: #1F2937;
+    }
+
+    /* Headings */
     h1, h2, h3 {
-        color: var(--gold) !important;
+        color: #4A6FA5 !important;
         letter-spacing: 0.3px;
     }
     h1 {
@@ -349,9 +77,9 @@ st.markdown("""
         font-weight: 600 !important;
     }
 
-    /* ----- Buttons (premium gradient) ----- */
+    /* Buttons — primary */
     .stButton button[kind="primary"] {
-        background: linear-gradient(135deg, var(--gold) 0%, var(--gold-dark) 100%) !important;
+        background: linear-gradient(135deg, #4A6FA5 0%, #3A5A8C 100%) !important;
         border: none !important;
         color: white !important;
         font-weight: 500 !important;
@@ -360,118 +88,129 @@ st.markdown("""
         box-shadow: var(--shadow-sm) !important;
     }
     .stButton button[kind="primary"]:hover {
-        background: linear-gradient(135deg, var(--gold-dark) 0%, var(--gold) 100%) !important;
+        background: linear-gradient(135deg, #3A5A8C 0%, #4A6FA5 100%) !important;
         color: #FFFFFF !important;
-        box-shadow: var(--shadow-gold) !important;
+        box-shadow: var(--shadow-blue) !important;
         transform: translateY(-1px);
     }
-    .stButton button[kind="primary"]:hover *,
-    .stButton button[kind="primary"]:hover p,
-    .stButton button[kind="primary"]:hover div {
-        color: #FFFFFF !important;
-    }
-    .stButton button[kind="primary"]:active {
-        transform: translateY(0);
-        color: #FFFFFF !important;
-    }
+
+    /* Buttons — secondary (สีขาว text ดำ) */
     .stButton button[kind="secondary"] {
-        background: var(--bg-card) !important;
-        border: 1px solid var(--border-soft) !important;
+        background: #FFFFFF !important;
+        border: 1px solid #D1D5DB !important;
         color: #1F2937 !important;
         transition: all 0.2s ease !important;
     }
     .stButton button[kind="secondary"]:hover {
-        background: var(--bg-card-hover) !important;
-        border-color: var(--border-active) !important;
-        color: #4A6FA5 !important;
-        transform: translateY(-1px);
-    }
-    .stButton button[kind="secondary"]:hover *,
-    .stButton button[kind="secondary"]:hover p,
-    .stButton button[kind="secondary"]:hover div {
+        background: #F4F6FA !important;
+        border-color: #4A6FA5 !important;
         color: #4A6FA5 !important;
     }
 
-    /* ----- Metric cards ----- */
+    /* Tabs */
+    .stTabs [data-baseweb="tab"] { color: #6B7280 !important; }
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        color: #4A6FA5 !important;
+        border-bottom-color: #4A6FA5 !important;
+    }
+
+    /* Metric */
     div[data-testid="stMetric"] {
-        background: linear-gradient(135deg, var(--bg-card) 0%, transparent 100%);
-        border: 1px solid var(--border-soft);
+        background: linear-gradient(135deg, #F4F6FA 0%, transparent 100%);
+        border: 1px solid rgba(74, 111, 165, 0.18);
         border-radius: 12px;
         padding: 12px 16px;
-        transition: all 0.2s ease;
-    }
-    div[data-testid="stMetric"]:hover {
-        border-color: var(--border-active);
-        background: linear-gradient(135deg, var(--bg-card-hover) 0%, transparent 100%);
-        transform: translateY(-2px);
-        box-shadow: var(--shadow-md);
     }
     div[data-testid="stMetricValue"] {
         font-size: 26px !important;
-        color: var(--gold) !important;
+        color: #4A6FA5 !important;
         font-weight: 600 !important;
-        letter-spacing: -0.5px;
     }
     div[data-testid="stMetricLabel"] {
         color: #6B7280 !important;
         font-weight: 400 !important;
     }
 
-    /* ----- Containers (cards) ----- */
+    /* Containers */
     div[data-testid="stVerticalBlockBorderWrapper"] {
-        background: var(--bg-card) !important;
-        border: 1px solid var(--border-soft) !important;
+        background: #FFFFFF !important;
+        border: 1px solid #E5E7EB !important;
         border-radius: 12px !important;
-        transition: all 0.25s ease;
-    }
-    div[data-testid="stVerticalBlockBorderWrapper"]:hover {
-        border-color: var(--border-active) !important;
-        box-shadow: var(--shadow-md);
     }
 
-    /* ----- Inputs ----- */
-    div[data-baseweb="input"] > div,
-    div[data-baseweb="textarea"] > div,
-    div[data-baseweb="select"] > div {
-        background: var(--bg-card) !important;
-        border-color: var(--border-soft) !important;
-        transition: all 0.2s ease;
+    /* ----- Brand Header ----- */
+    .brand-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 8px 0;
     }
-    div[data-baseweb="input"] > div:focus-within,
-    div[data-baseweb="textarea"] > div:focus-within,
-    div[data-baseweb="select"] > div:focus-within {
-        border-color: var(--gold) !important;
-        box-shadow: 0 0 0 3px var(--gold-soft) !important;
+    .brand-logo {
+        width: 40px; height: 40px;
+        background: linear-gradient(135deg, #4A6FA5, #3A5A8C);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 22px;
+        color: white;
+        box-shadow: var(--shadow-blue);
+    }
+    .brand-name {
+        font-size: 20px;
+        font-weight: 700;
+        color: #4A6FA5;
+        letter-spacing: -0.5px;
+        line-height: 1;
     }
 
-    /* ----- Alerts ----- */
-    .alert {
-        padding: 12px 16px;
-        border-radius: 8px;
-        margin-bottom: 12px;
-        animation: slideDown 0.3s ease-out;
+    /* Login splash */
+    .login-splash {
+        text-align: center;
+        margin: 40px 0;
     }
-    @keyframes slideDown {
-        from { opacity: 0; transform: translateY(-10px); }
-        to { opacity: 1; transform: translateY(0); }
+    .login-logo {
+        width: 80px; height: 80px;
+        background: linear-gradient(135deg, #4A6FA5, #3A5A8C);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 40px;
+        color: white;
+        margin: 0 auto 16px;
+        box-shadow: var(--shadow-blue);
+    }
+    .login-title {
+        font-size: 32px;
+        font-weight: 700;
+        background: linear-gradient(135deg, #4A6FA5 0%, #A8C0E0 50%, #4A6FA5 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        margin-bottom: 4px;
+    }
+    .login-subtitle {
+        font-size: 14px;
+        color: #6B7280;
+        letter-spacing: 0.5px;
     }
 
-    /* ----- Empty state ----- */
+    /* Empty state */
     .empty-state {
         text-align: center;
-        padding: 48px 24px;
-        background: linear-gradient(180deg, var(--bg-card) 0%, transparent 100%);
+        padding: 40px 20px;
+        background: #F4F6FA;
         border-radius: 12px;
-        border: 1px dashed var(--border-soft);
-        margin: 16px 0;
+        border: 1px dashed #D1D5DB;
     }
     .empty-icon {
-        font-size: 56px;
-        margin-bottom: 16px;
+        font-size: 48px;
+        margin-bottom: 12px;
         opacity: 0.6;
     }
     .empty-title {
-        color: var(--gold) !important;
+        color: #4A6FA5;
         font-size: 18px;
         font-weight: 500;
         margin-bottom: 8px;
@@ -484,88 +223,28 @@ st.markdown("""
         line-height: 1.6;
     }
 
-    /* ----- Badges ----- */
+    /* Alerts */
+    .alert {
+        padding: 12px 16px;
+        border-radius: 8px;
+        margin-bottom: 12px;
+    }
+
+    /* Badges */
     .badge {
         display: inline-block;
         padding: 3px 12px;
         border-radius: 12px;
-        font-size: 11px;
+        font-size: 12px;
         font-weight: 500;
-        letter-spacing: 0.3px;
-    }
-    .badge-gold {
-        background: var(--gold-soft);
-        color: var(--gold);
-        border: 1px solid var(--border-soft);
     }
 
-    /* ----- Brand header (logo + name) ----- */
-    .brand-header {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 8px 0;
-    }
-    .brand-logo {
-        width: 40px;
-        height: 40px;
-        border-radius: 50%;
-        background: linear-gradient(135deg, var(--gold) 0%, var(--gold-dark) 100%);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 20px;
-        box-shadow: var(--shadow-gold);
-    }
-    .brand-name {
-        font-size: 22px;
-        font-weight: 600;
-        background: linear-gradient(135deg, #4A6FA5 0%, #A8C0E0 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-        letter-spacing: 0.5px;
-    }
+    /* Hide Streamlit branding */
+    #MainMenu { visibility: hidden; }
+    footer { visibility: hidden; }
+    header[data-testid="stHeader"] { background: transparent !important; }
 
-    /* ----- Login splash ----- */
-    .login-splash {
-        text-align: center;
-        padding: 48px 24px 32px;
-    }
-    .login-logo {
-        width: 80px;
-        height: 80px;
-        margin: 0 auto 16px;
-        border-radius: 50%;
-        background: linear-gradient(135deg, var(--gold) 0%, var(--gold-dark) 100%);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 40px;
-        box-shadow: var(--shadow-gold);
-        animation: float 3s ease-in-out infinite;
-    }
-    @keyframes float {
-        0%, 100% { transform: translateY(0); }
-        50% { transform: translateY(-6px); }
-    }
-    .login-title {
-        font-size: 32px;
-        font-weight: 600;
-        background: linear-gradient(135deg, #4A6FA5 0%, #A8C0E0 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-        margin-bottom: 4px;
-        letter-spacing: 1px;
-    }
-    .login-subtitle {
-        font-size: 14px;
-        color: #6B7280;
-        letter-spacing: 0.5px;
-    }
-
-    /* ----- Mobile responsive ----- */
+    /* Mobile responsive */
     @media (max-width: 768px) {
         h1 { font-size: 24px !important; }
         h2 { font-size: 20px !important; }
@@ -575,60 +254,7 @@ st.markdown("""
             min-height: 44px !important;
             font-size: 14px !important;
         }
-        div[data-testid="column"] {
-            min-width: 100% !important;
-            flex: 1 0 100% !important;
-        }
-        .login-logo { width: 64px; height: 64px; font-size: 32px; }
-        .login-title { font-size: 24px; }
     }
-
-    /* ----- Status badges ----- */
-    .status-pending { background: rgba(136, 136, 136, 0.15); color: #aaa; }
-    .status-ordered { background: rgba(15, 110, 86, 0.15); color: #5DCAA5; }
-    .status-shipping { background: rgba(186, 117, 23, 0.15); color: #FAC775; }
-    .status-received { background: rgba(29, 158, 117, 0.15); color: #5DCAA5; }
-    .status-issue { background: rgba(163, 45, 45, 0.15); color: #F09595; }
-    .status-done { background: rgba(39, 80, 10, 0.15); color: #97C459; }
-    .status-cancelled { background: rgba(163, 45, 45, 0.15); color: #999; }
-
-    /* ----- Animations on page load ----- */
-    .stMarkdown, .element-container {
-        animation: fadeIn 0.4s ease-out;
-    }
-    @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(8px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-
-    /* ----- Scrollbar polish ----- */
-    ::-webkit-scrollbar { width: 8px; height: 8px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb {
-        background: var(--border-soft);
-        border-radius: 4px;
-    }
-    ::-webkit-scrollbar-thumb:hover {
-        background: var(--border-active);
-    }
-
-    /* ----- Hide Streamlit branding for clean look ----- */
-    #MainMenu { visibility: hidden; }
-    footer { visibility: hidden; }
-    header[data-testid="stHeader"] { background: transparent !important; }
-
-    /* ===== Button hover safety (กัน hover เป็นดำ) ===== */
-    .stButton button:hover, .stDownloadButton button:hover, .stFormSubmitButton button:hover {
-        background-color: #EEF2F7 !important;
-        color: #4A6FA5 !important;
-        border-color: #4A6FA5 !important;
-    }
-    .stButton button[kind="primary"]:hover, .stFormSubmitButton button[kind="primary"]:hover {
-        background-color: #3A5A8C !important;
-        color: #FFFFFF !important;
-        border-color: #3A5A8C !important;
-    }
-
 </style>
 """, unsafe_allow_html=True)
 
