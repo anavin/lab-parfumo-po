@@ -413,7 +413,7 @@ st.markdown("""
         letter-spacing: -0.5px;
     }
     div[data-testid="stMetricLabel"] {
-        color: rgba(168, 192, 224, 0.7) !important;
+        color: #6B7280 !important;
         font-weight: 400 !important;
     }
 
@@ -477,7 +477,7 @@ st.markdown("""
         margin-bottom: 8px;
     }
     .empty-text {
-        color: rgba(168, 192, 224, 0.7);
+        color: #6B7280;
         font-size: 14px;
         max-width: 400px;
         margin: 0 auto 16px;
@@ -561,7 +561,7 @@ st.markdown("""
     }
     .login-subtitle {
         font-size: 14px;
-        color: rgba(168, 192, 224, 0.7);
+        color: #6B7280;
         letter-spacing: 0.5px;
     }
 
@@ -831,7 +831,7 @@ def render_header():
             <div class="brand-logo">📦</div>
             <div>
                 <div class="brand-name">Lab Parfumo</div>
-                <div style="font-size: 11px; color: rgba(168, 192, 224, 0.6); letter-spacing: 0.5px; margin-top: -2px;">
+                <div style="font-size: 11px; color: rgba(255, 255, 255, 0.85); letter-spacing: 0.5px; margin-top: -2px;">
                     {emoji} {user['full_name']} • {role_label}
                 </div>
             </div>
