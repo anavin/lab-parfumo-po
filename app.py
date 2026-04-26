@@ -85,29 +85,108 @@ st.markdown("""
     }
 
     /* ----- Brand Header (ใช้ใน render_header) ----- */
+    /* Container with border */
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        border-radius: 12px;
+        transition: all 0.2s ease;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"]:hover {
+        box-shadow: 0 4px 16px rgba(74, 111, 165, 0.1);
+        border-color: rgba(74, 111, 165, 0.3) !important;
+    }
+
+    /* Metric cards (Dashboard) */
+    div[data-testid="stMetric"] {
+        background: linear-gradient(135deg, #F4F6FA 0%, #FFFFFF 100%);
+        border: 1px solid rgba(74, 111, 165, 0.15);
+        border-radius: 12px;
+        padding: 14px 18px;
+        transition: all 0.2s ease;
+    }
+    div[data-testid="stMetric"]:hover {
+        border-color: rgba(74, 111, 165, 0.4);
+        box-shadow: 0 4px 16px rgba(74, 111, 165, 0.12);
+        transform: translateY(-2px);
+    }
+
+    /* Inputs sleeker */
+    .stTextInput input, .stNumberInput input, .stTextArea textarea,
+    .stDateInput input, [data-baseweb="select"] > div {
+        border-radius: 8px !important;
+        transition: all 0.2s ease;
+    }
+    .stTextInput input:focus, .stNumberInput input:focus,
+    .stTextArea textarea:focus {
+        border-color: #4A6FA5 !important;
+        box-shadow: 0 0 0 3px rgba(74, 111, 165, 0.1) !important;
+    }
+
+    /* Expander */
+    [data-testid="stExpander"] summary {
+        border-radius: 8px;
+        transition: all 0.2s ease;
+    }
+    [data-testid="stExpander"] summary:hover {
+        background: rgba(74, 111, 165, 0.05);
+    }
+
+    /* Divider */
+    hr, [data-testid="stDivider"] {
+        border-color: rgba(74, 111, 165, 0.15);
+    }
+
+    /* All buttons — better radius + transition */
+    .stButton button {
+        border-radius: 8px !important;
+        transition: all 0.2s ease !important;
+    }
+
+    /* ----- Brand Header (premium) ----- */
     .brand-header {
         display: flex;
         align-items: center;
-        gap: 12px;
-        padding: 8px 0;
+        gap: 14px;
+        padding: 10px 16px;
+        background: linear-gradient(135deg, rgba(74, 111, 165, 0.06) 0%, rgba(168, 192, 224, 0.08) 100%);
+        border-radius: 12px;
+        border: 1px solid rgba(74, 111, 165, 0.12);
     }
     .brand-logo {
-        width: 40px; height: 40px;
+        width: 44px; height: 44px;
         background: linear-gradient(135deg, #4A6FA5, #3A5A8C);
-        border-radius: 50%;
+        border-radius: 12px;
         display: flex;
         align-items: center;
         justify-content: center;
         font-size: 22px;
         color: white;
-        box-shadow: 0 2px 8px rgba(74, 111, 165, 0.3);
+        box-shadow: 0 4px 12px rgba(74, 111, 165, 0.35);
+        flex-shrink: 0;
     }
     .brand-name {
-        font-size: 20px;
+        font-size: 18px;
         font-weight: 700;
         color: #4A6FA5;
-        letter-spacing: -0.5px;
+        letter-spacing: -0.3px;
+        line-height: 1.1;
+        margin: 0;
+    }
+    .brand-meta {
+        font-size: 11px;
+        color: #6B7280;
+        margin-top: 3px;
         line-height: 1;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+    .brand-role {
+        background: rgba(74, 111, 165, 0.1);
+        color: #4A6FA5;
+        padding: 1px 7px;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 10px;
     }
 
     /* Login splash */
@@ -395,10 +474,10 @@ def render_header():
         st.markdown(f"""
         <div class="brand-header">
             <div class="brand-logo">📦</div>
-            <div>
+            <div style="flex:1; min-width:0;">
                 <div class="brand-name">Lab Parfumo</div>
-                <div style="font-size: 11px; color: #6B7280; letter-spacing: 0.5px; margin-top: -2px;">
-                    {emoji} {user['full_name']} • {role_label}
+                <div class="brand-meta">
+                    {emoji} {user['full_name']} <span class="brand-role">{role_label}</span>
                 </div>
             </div>
         </div>
