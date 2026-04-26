@@ -219,6 +219,83 @@ def get_users():
         return []
 
 
+def get_admins():
+    """ดึงรายชื่อ admin ทั้งหมด (สำหรับส่ง notification)"""
+    try:
+        return get_supabase().table("users").select("*").eq("role", "admin").execute().data or []
+    except Exception:
+        return []
+
+
+def notify_admins(po_id, title, message=""):
+    """ส่ง notification ให้ admin ทุกคน"""
+    try:
+        admins = get_admins()
+        for admin in admins:
+            add_notification(admin['id'], po_id, title, message)
+        return len(admins)
+    except Exception:
+        return 0
+
+
+def has_recent_notification(user_id, po_id, hours=20):
+    """เช็คว่า user เคยได้ notification ของ PO นี้ในช่วง N ชั่วโมงที่ผ่านมาไหม
+    ใช้ป้องกันการ spam notification ซ้ำๆ"""
+    try:
+        from datetime import datetime, timedelta
+        since = (datetime.now() - timedelta(hours=hours)).isoformat()
+        r = get_supabase().table("notifications").select("id").eq(
+            "user_id", user_id
+        ).eq("po_id", po_id).gte("created_at", since).limit(1).execute()
+        return bool(r.data)
+    except Exception:
+        return False
+
+
+def check_and_notify_stale_pos():
+    """เช็ค PO ที่ค้างสถานะ "รอจัดซื้อดำเนินการ" > 3 วัน → แจ้งเตือน admin
+    ทำงานทุกครั้งที่ admin login (1 ครั้ง/วัน per PO ต่อ admin)"""
+    try:
+        from datetime import datetime, timedelta
+        sb = get_supabase()
+        # หา PO ที่ค้างเกิน 3 วัน
+        threshold = (datetime.now() - timedelta(days=3)).isoformat()
+        r = sb.table("purchase_orders").select("*").eq(
+            "status", "รอจัดซื้อดำเนินการ"
+        ).lte("created_at", threshold).execute()
+        stale_pos = r.data or []
+
+        if not stale_pos:
+            return 0
+
+        admins = get_admins()
+        sent_count = 0
+        for po in stale_pos:
+            for admin in admins:
+                # แจ้งเตือนได้ 1 ครั้ง/วัน per admin per PO
+                if has_recent_notification(admin['id'], po['id'], hours=20):
+                    continue
+                # คำนวณวันค้าง
+                try:
+                    created = datetime.fromisoformat(
+                        po['created_at'].replace('Z', '+00:00')
+                    )
+                    days_stale = (datetime.now(created.tzinfo) - created).days
+                except Exception:
+                    days_stale = 3
+
+                add_notification(
+                    admin['id'],
+                    po['id'],
+                    f"⏰ PO ค้างเกิน {days_stale} วัน",
+                    f"{po.get('po_number', '-')} ยังไม่ได้สั่ง supplier — โปรดดำเนินการ",
+                )
+                sent_count += 1
+        return sent_count
+    except Exception:
+        return 0
+
+
 def get_user(uid):
     try:
         r = get_supabase().table("users").select("*").eq("id", uid).execute()
@@ -802,6 +879,21 @@ def create_purchase_order(items, purpose="", notes="", created_by=None, created_
                 "items": clean,
             }).eq("id", po['id']).execute()
             po['items'] = clean
+
+        # ===== Notify admin ทุกคน =====
+        try:
+            n_items = len(items)
+            n_custom = sum(1 for it in items if not it.get('equipment_id'))
+            msg = f"{po['po_number']} • {n_items} รายการ"
+            if n_custom > 0:
+                msg += f" (มี {n_custom} รายการใหม่ที่รออนุมัติ)"
+            notify_admins(
+                po['id'],
+                f"📥 PO ใหม่จาก {created_by_name}",
+                msg,
+            )
+        except Exception:
+            pass  # notification fail ไม่ควร block การสร้าง PO
 
         return po
     except Exception as e:

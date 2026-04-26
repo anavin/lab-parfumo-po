@@ -1209,6 +1209,16 @@ def main():
         force_change_password_page()
         return
 
+    # ===== Admin: เช็ค PO ค้างเกิน 3 วัน → แจ้งเตือน (1 ครั้ง/วัน) =====
+    if is_admin():
+        # ใช้ session flag เพื่อรันแค่ครั้งเดียวต่อ session
+        if not st.session_state.get('_stale_check_done'):
+            try:
+                db.check_and_notify_stale_pos()
+            except Exception:
+                pass
+            st.session_state['_stale_check_done'] = True
+
     render_header()
     render_search_panel()
     render_alerts()
