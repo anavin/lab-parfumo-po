@@ -1039,38 +1039,62 @@ def _render_item_row(item, idx, eq_map, po_id):
                         unsafe_allow_html=True,
                     )
 
-        # ปุ่มดูรายละเอียด
+        # ปุ่มดูรายละเอียด — แสดงเมื่อ มี eq หรือ มีรูปจาก custom item
+        custom_imgs = item.get('image_urls') or []
         with cols[4]:
             detail_key = f"item_detail_{po_id}_{idx}"
             is_open = st.session_state.get(detail_key, False)
-            if eq:  # มีข้อมูล equipment ให้ดู
+            has_detail = bool(eq) or bool(custom_imgs)
+            if has_detail:
                 if st.button("👁️" if not is_open else "▲",
                               key=f"btn_detail_{po_id}_{idx}",
                               use_container_width=True,
-                              help="ดูรายละเอียดสินค้า"):
+                              help="ดูรายละเอียด / รูป"):
                     st.session_state[detail_key] = not is_open
                     st.rerun()
 
         # Detail expanded section
+        if st.session_state.get(detail_key):
+            if eq:
+                st.markdown("---")
+                # รวมรูปทั้งหมด (image_urls + image_url legacy)
+                eq_images = list(eq.get('image_urls') or [])
+                if eq.get('image_url') and eq['image_url'] not in eq_images:
+                    eq_images.insert(0, eq['image_url'])
+
+                dc1, dc2 = st.columns([1, 2])
+                with dc1:
+                    # รูปหลัก (รูปแรก)
+                    if eq_images:
+                        try:
+                            st.image(eq_images[0], use_container_width=True)
+                        except Exception:
+                            pass
+                    else:
+                        st.markdown('<div style="font-size:64px; text-align:center;">🧴</div>',
+                                      unsafe_allow_html=True)
+            elif custom_imgs:
+                # ===== Custom item — แสดงรูปที่ user upload =====
+                st.markdown("---")
+                st.markdown(f"#### 📷 รูปประกอบ ({len(custom_imgs)} รูป)")
+                st.caption("✏️ รูปที่ผู้สร้าง PO อัปโหลดไว้ — ใช้ดูประกอบการสั่งซื้อ")
+                # แสดงเป็น grid 4 คอลัมน์
+                cols_per_row = 4
+                for r in range(0, len(custom_imgs), cols_per_row):
+                    row_imgs = custom_imgs[r:r + cols_per_row]
+                    img_cols = st.columns(cols_per_row)
+                    for i, url in enumerate(row_imgs):
+                        with img_cols[i]:
+                            try:
+                                st.image(url, use_container_width=True)
+                            except Exception:
+                                st.caption("⚠️ โหลดรูปไม่สำเร็จ")
+                if item.get('notes'):
+                    st.markdown(f"💬 **หมายเหตุ:** {item['notes']}")
+                return  # ไม่ต้องเข้า block ของ eq detail
+
+        # ===== ส่วนต่อจาก eq detail =====
         if eq and st.session_state.get(detail_key):
-            st.markdown("---")
-
-            # รวมรูปทั้งหมด (image_urls + image_url legacy)
-            eq_images = list(eq.get('image_urls') or [])
-            if eq.get('image_url') and eq['image_url'] not in eq_images:
-                eq_images.insert(0, eq['image_url'])
-
-            dc1, dc2 = st.columns([1, 2])
-            with dc1:
-                # รูปหลัก (รูปแรก)
-                if eq_images:
-                    try:
-                        st.image(eq_images[0], use_container_width=True)
-                    except Exception:
-                        pass
-                else:
-                    st.markdown('<div style="font-size:64px; text-align:center;">🧴</div>',
-                                  unsafe_allow_html=True)
             with dc2:
                 st.markdown(f"### {eq.get('name', '-')}")
                 st.caption(f"📦 SKU: **{eq.get('sku') or '-'}**")
