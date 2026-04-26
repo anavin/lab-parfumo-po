@@ -397,7 +397,7 @@ def render_header():
             <div class="brand-logo">📦</div>
             <div>
                 <div class="brand-name">Lab Parfumo</div>
-                <div style="font-size: 11px; color: rgba(255, 255, 255, 0.85); letter-spacing: 0.5px; margin-top: -2px;">
+                <div style="font-size: 11px; color: #6B7280; letter-spacing: 0.5px; margin-top: -2px;">
                     {emoji} {user['full_name']} • {role_label}
                 </div>
             </div>
