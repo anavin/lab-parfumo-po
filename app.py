@@ -703,6 +703,84 @@ st.markdown("""
     #MainMenu { visibility: hidden; }
     footer { visibility: hidden; }
     header[data-testid="stHeader"] { background: transparent !important; }
+
+    /* ============================================================ */
+    /* ULTRA-FINAL: Force button colors with MAX specificity         */
+    /* (วางสุดท้าย — ชนะทุก rule ก่อนหน้า + Streamlit defaults)        */
+    /* ============================================================ */
+
+    /* ===== ALL secondary/default buttons — NEVER turn dark ===== */
+    html body .stApp button:not([kind="primary"]),
+    html body .stApp [data-testid="stButton"] button:not([kind="primary"]),
+    html body div button:not([kind="primary"]) {
+        background-color: #FFFFFF !important;
+        background-image: none !important;
+        background: #FFFFFF !important;
+        color: #1F2937 !important;
+        border: 1px solid #D1D5DB !important;
+    }
+
+    html body .stApp button:not([kind="primary"]):hover,
+    html body .stApp button:not([kind="primary"]):focus,
+    html body .stApp button:not([kind="primary"]):focus-visible,
+    html body .stApp button:not([kind="primary"]):active,
+    html body div button:not([kind="primary"]):hover,
+    html body div button:not([kind="primary"]):focus {
+        background-color: #EEF2F7 !important;
+        background-image: none !important;
+        background: #EEF2F7 !important;
+        color: #4A6FA5 !important;
+        border: 1px solid #4A6FA5 !important;
+        outline: none !important;
+        box-shadow: 0 0 0 2px rgba(74, 111, 165, 0.15) !important;
+    }
+
+    /* ทุก child element ต้องตามสีพ่อ */
+    html body .stApp button:not([kind="primary"]) *,
+    html body div button:not([kind="primary"]) * {
+        color: #1F2937 !important;
+        background: transparent !important;
+    }
+    html body .stApp button:not([kind="primary"]):hover *,
+    html body .stApp button:not([kind="primary"]):focus *,
+    html body div button:not([kind="primary"]):hover * {
+        color: #4A6FA5 !important;
+        background: transparent !important;
+    }
+
+    /* ===== ALL primary buttons — น้ำเงิน + text ขาว เสมอ ===== */
+    html body .stApp button[kind="primary"],
+    html body div button[kind="primary"] {
+        background-color: #4A6FA5 !important;
+        background-image: none !important;
+        background: #4A6FA5 !important;
+        color: #FFFFFF !important;
+        border: 1px solid #4A6FA5 !important;
+    }
+
+    html body .stApp button[kind="primary"]:hover,
+    html body .stApp button[kind="primary"]:focus,
+    html body .stApp button[kind="primary"]:focus-visible,
+    html body .stApp button[kind="primary"]:active,
+    html body div button[kind="primary"]:hover,
+    html body div button[kind="primary"]:focus {
+        background-color: #3A5A8C !important;
+        background-image: none !important;
+        background: #3A5A8C !important;
+        color: #FFFFFF !important;
+        border: 1px solid #3A5A8C !important;
+        outline: none !important;
+        box-shadow: 0 0 0 2px rgba(74, 111, 165, 0.3) !important;
+    }
+
+    html body .stApp button[kind="primary"] *,
+    html body .stApp button[kind="primary"]:hover *,
+    html body .stApp button[kind="primary"]:focus *,
+    html body div button[kind="primary"] *,
+    html body div button[kind="primary"]:hover * {
+        color: #FFFFFF !important;
+        background: transparent !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
