@@ -30,6 +30,200 @@ st.set_page_config(
 st.markdown("""
 <style>
     /* ============================================ */
+    /* FORCE LIGHT MODE (override user dark theme)  */
+    /* ============================================ */
+
+    /* บังคับ light mode — แม้ user เปลี่ยน Streamlit settings เป็น dark */
+    html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"],
+    .main, .stApp, [data-testid="stHeader"], [data-testid="stSidebar"],
+    [data-testid="stSidebarContent"], section[data-testid="stSidebar"] {
+        background-color: #FFFFFF !important;
+        color: #1F2937 !important;
+        color-scheme: light !important;
+    }
+
+    /* ทุก text element ต้องเป็นสีดำ/เทา */
+    .stApp p, .stApp span, .stApp div, .stApp label, .stApp li, .stApp td, .stApp th,
+    .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6,
+    .stMarkdown, .stMarkdown p, .stMarkdown span, .stMarkdown div,
+    .stMarkdown li, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3,
+    [data-testid="stMarkdownContainer"], [data-testid="stMarkdownContainer"] *,
+    [data-testid="stCaptionContainer"], [data-testid="stText"] {
+        color: #1F2937 !important;
+    }
+
+    /* Caption ใช้สีเทา */
+    [data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] *,
+    .stCaption, small {
+        color: #6B7280 !important;
+    }
+
+    /* Inputs (text/number/textarea) — bg ขาว text ดำ */
+    .stTextInput input, .stNumberInput input, .stTextArea textarea,
+    .stDateInput input, .stTimeInput input,
+    [data-baseweb="input"] input, [data-baseweb="textarea"] textarea,
+    [data-baseweb="select"] [role="button"], [data-baseweb="select"] input,
+    .stSelectbox [data-baseweb="select"] > div, .stMultiSelect [data-baseweb="select"] > div {
+        background-color: #FFFFFF !important;
+        color: #1F2937 !important;
+        border-color: #D1D5DB !important;
+    }
+    .stTextInput input::placeholder, .stTextArea textarea::placeholder,
+    .stNumberInput input::placeholder, .stDateInput input::placeholder {
+        color: #9CA3AF !important;
+    }
+
+    /* Select dropdowns / popovers */
+    [data-baseweb="popover"], [data-baseweb="menu"], [data-baseweb="list"],
+    [role="listbox"], [role="option"] {
+        background-color: #FFFFFF !important;
+        color: #1F2937 !important;
+    }
+    [role="option"]:hover, [role="option"][aria-selected="true"] {
+        background-color: #F4F6FA !important;
+        color: #1F2937 !important;
+    }
+
+    /* File uploader */
+    [data-testid="stFileUploader"], [data-testid="stFileUploader"] section,
+    [data-testid="stFileUploaderDropzone"] {
+        background-color: #F9FAFB !important;
+        color: #1F2937 !important;
+        border-color: #D1D5DB !important;
+    }
+    [data-testid="stFileUploader"] *, [data-testid="stFileUploader"] small {
+        color: #1F2937 !important;
+    }
+
+    /* Buttons — secondary (ปุ่มขาว) */
+    .stButton button[kind="secondary"], .stDownloadButton button[kind="secondary"],
+    .stFormSubmitButton button[kind="secondary"] {
+        background-color: #FFFFFF !important;
+        color: #1F2937 !important;
+        border: 1px solid #D1D5DB !important;
+    }
+    .stButton button[kind="secondary"]:hover {
+        background-color: #F4F6FA !important;
+        border-color: #4A6FA5 !important;
+        color: #4A6FA5 !important;
+    }
+
+    /* Buttons — primary (ปุ่มน้ำเงิน) — ตัวหนังสือต้องขาว */
+    .stButton button[kind="primary"], .stDownloadButton button[kind="primary"],
+    .stFormSubmitButton button[kind="primary"] {
+        background-color: #4A6FA5 !important;
+        color: #FFFFFF !important;
+        border: 1px solid #4A6FA5 !important;
+    }
+    .stButton button[kind="primary"] *, .stButton button[kind="primary"] p {
+        color: #FFFFFF !important;
+    }
+    .stButton button[kind="primary"]:hover {
+        background-color: #3A5A8C !important;
+        color: #FFFFFF !important;
+    }
+
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        background-color: #FFFFFF !important;
+        border-bottom: 1px solid #E5E7EB !important;
+    }
+    .stTabs [data-baseweb="tab"] {
+        color: #6B7280 !important;
+    }
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        color: #4A6FA5 !important;
+        border-bottom-color: #4A6FA5 !important;
+    }
+
+    /* Expander */
+    .streamlit-expanderHeader, [data-testid="stExpander"],
+    [data-testid="stExpander"] summary {
+        background-color: #F4F6FA !important;
+        color: #1F2937 !important;
+    }
+    [data-testid="stExpander"] details > div {
+        background-color: #FFFFFF !important;
+    }
+
+    /* Container with border */
+    [data-testid="stVerticalBlockBorderWrapper"],
+    [data-testid="stHorizontalBlock"] [data-testid="stVerticalBlock"] {
+        background-color: transparent !important;
+    }
+    [data-testid="stContainer"][data-testid*="border"] {
+        background-color: #FFFFFF !important;
+        border-color: #E5E7EB !important;
+    }
+
+    /* Metric */
+    [data-testid="stMetric"], [data-testid="stMetricValue"],
+    [data-testid="stMetricLabel"], [data-testid="stMetricDelta"] {
+        color: #1F2937 !important;
+    }
+    [data-testid="stMetricLabel"] * { color: #6B7280 !important; }
+    [data-testid="stMetricValue"] * { color: #1F2937 !important; }
+
+    /* Alert/Info/Warning/Success/Error boxes */
+    [data-testid="stAlert"] {
+        color: #1F2937 !important;
+    }
+    [data-testid="stAlert"] * {
+        color: inherit !important;
+    }
+    /* info — blue */
+    [data-testid="stAlert"][kind="info"], div[data-baseweb="notification"][kind="info"] {
+        background-color: #DBEAFE !important;
+        color: #1E3A8A !important;
+    }
+    /* success — green */
+    [data-testid="stAlert"][kind="success"] {
+        background-color: #D1FAE5 !important;
+        color: #065F46 !important;
+    }
+    /* warning — yellow */
+    [data-testid="stAlert"][kind="warning"] {
+        background-color: #FEF3C7 !important;
+        color: #92400E !important;
+    }
+    /* error — red */
+    [data-testid="stAlert"][kind="error"] {
+        background-color: #FEE2E2 !important;
+        color: #991B1B !important;
+    }
+
+    /* Radio + Checkbox */
+    .stRadio label, .stCheckbox label, .stRadio label *, .stCheckbox label * {
+        color: #1F2937 !important;
+    }
+
+    /* Sliders */
+    .stSlider [data-baseweb="slider"] * { color: #1F2937 !important; }
+
+    /* Code blocks */
+    .stCodeBlock, code {
+        background-color: #F3F4F6 !important;
+        color: #4A6FA5 !important;
+    }
+
+    /* Dataframe / Tables */
+    .stDataFrame, [data-testid="stDataFrame"], .stTable {
+        background-color: #FFFFFF !important;
+        color: #1F2937 !important;
+    }
+    .stDataFrame *, .stTable * { color: #1F2937 !important; }
+
+    /* Divider */
+    hr, [data-testid="stDivider"] {
+        border-color: #E5E7EB !important;
+    }
+
+    /* Top toolbar (Streamlit's "Deploy" / Settings / Hamburger) */
+    [data-testid="stToolbar"], [data-testid="stDecoration"] {
+        background-color: transparent !important;
+    }
+
+    /* ============================================ */
     /* Lab Parfumo Premium Theme                    */
     /* ============================================ */
 
