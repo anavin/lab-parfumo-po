@@ -668,6 +668,8 @@ def create_purchase_order(items, purpose="", notes="", created_by=None, created_
             "unit": it.get("unit", "ชิ้น"),
             "unit_price": 0, "subtotal": 0,
             "notes": it.get("notes", ""),
+            # เก็บรูปจาก custom item (พิมพ์เอง + upload รูป)
+            "image_urls": it.get("image_urls") or [],
         } for it in items]
 
         po = sb.table("purchase_orders").insert({
