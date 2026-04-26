@@ -412,20 +412,42 @@ def render_po_create():
                 "หมายเหตุ (ถ้ามี)",
                 placeholder="เช่น สเปคพิเศษ / ยี่ห้อ / สี",
             )
+            # ===== Upload รูป (ถ่ายมาให้ดู / link สั่งซื้อ) =====
+            custom_imgs = st.file_uploader(
+                "📷 รูปประกอบ (ถ้ามี — แนะนำมีเพื่อให้ admin เห็นว่าจะสั่งอะไร)",
+                type=['jpg', 'jpeg', 'png', 'webp'],
+                accept_multiple_files=True,
+                key="custom_item_imgs",
+            )
             if st.form_submit_button("➕ เพิ่ม", type="primary",
                                        use_container_width=True):
                 if not custom_name:
                     st.error("กรุณาพิมพ์ชื่อรายการ")
                 else:
+                    # อัปโหลดรูป (ถ้ามี) ไป Supabase storage
+                    image_urls = []
+                    if custom_imgs:
+                        with st.spinner("กำลังอัปโหลดรูป..."):
+                            for img in custom_imgs:
+                                url = db.upload_image(
+                                    img.read(), img.name,
+                                    bucket=db.IMG_EQ,
+                                )
+                                if url:
+                                    image_urls.append(url)
+
                     st.session_state['po_items'].append({
                         'equipment_id': None,
                         'name': custom_name,
                         'unit': custom_unit or 'ชิ้น',
                         'qty': int(custom_qty),
                         'notes': custom_note,
+                        'image_urls': image_urls,
                     })
                     db.save_po_draft(uid(), st.session_state['po_items'],
                                        st.session_state.get('_po_notes_value', ''))
+                    if image_urls:
+                        st.success(f"✅ เพิ่ม '{custom_name}' พร้อม {len(image_urls)} รูป")
                     st.rerun()
 
     # ===== รายการที่เลือก =====
@@ -645,9 +667,21 @@ def _render_selected_items(eq_list):
             # รูป
             with c1:
                 eq = eq_map.get(item.get('equipment_id'))
-                if eq and eq.get('image_url'):
+                # หารูป — จาก eq, item['image_urls'], หรือ fallback emoji
+                thumb = None
+                if eq:
+                    thumb = eq.get('image_url')
+                    if not thumb:
+                        urls = eq.get('image_urls') or []
+                        if urls:
+                            thumb = urls[0]
+                # custom item ที่ user upload เอง
+                if not thumb and item.get('image_urls'):
+                    thumb = item['image_urls'][0]
+
+                if thumb:
                     try:
-                        st.image(eq['image_url'], width=50)
+                        st.image(thumb, width=50)
                     except Exception:
                         st.markdown('🧴')
                 else:
@@ -659,7 +693,11 @@ def _render_selected_items(eq_list):
                 if item.get('equipment_id') and eq:
                     st.caption(f"SKU: {eq.get('sku') or '-'}")
                 else:
-                    st.caption("✏️ พิมพ์เอง")
+                    n_imgs = len(item.get('image_urls') or [])
+                    if n_imgs:
+                        st.caption(f"✏️ พิมพ์เอง • 📷 {n_imgs} รูป")
+                    else:
+                        st.caption("✏️ พิมพ์เอง")
                 if item.get('notes'):
                     st.caption(f"💬 {item['notes']}")
 
@@ -954,6 +992,9 @@ def _render_item_row(item, idx, eq_map, po_id):
                     urls = eq.get('image_urls') or []
                     if urls:
                         thumb = urls[0]
+            # custom item — รูปที่ user upload ตอนสร้าง PO
+            if not thumb and item.get('image_urls'):
+                thumb = item['image_urls'][0]
             if thumb:
                 try:
                     st.image(thumb, width=50)
@@ -969,7 +1010,11 @@ def _render_item_row(item, idx, eq_map, po_id):
             if eq:
                 st.caption(f"SKU: {eq.get('sku') or '-'}  |  📂 {eq.get('category', '-')}")
             elif not eq_id:
-                st.caption("✏️ พิมพ์เอง (ไม่ได้อยู่ใน catalog)")
+                n_imgs = len(item.get('image_urls') or [])
+                if n_imgs:
+                    st.caption(f"✏️ พิมพ์เอง (ไม่ได้อยู่ใน catalog) • 📷 {n_imgs} รูป")
+                else:
+                    st.caption("✏️ พิมพ์เอง (ไม่ได้อยู่ใน catalog)")
             if item.get('notes'):
                 st.caption(f"💬 {item['notes']}")
 
