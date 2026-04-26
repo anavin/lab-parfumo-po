@@ -226,76 +226,7 @@ st.markdown("""
         color: #4A6FA5 !important;
     }
 
-    /* ============================================ */
-    /* NUCLEAR OPTION — บังคับทุกปุ่ม Streamlit       */
-    /* ใช้ multiple selector + specificity สูง       */
-    /* (กันปุ่ม top-bar: 🔍 🔔 🚪 + 🛠️ เครื่องมือ)    */
-    /* ============================================ */
-
-    /* ทุก button element ในแอป — กัน hover เป็นดำ */
-    div[data-testid="stHorizontalBlock"] button:hover,
-    div[data-testid="stHorizontalBlock"] button:focus,
-    div[data-testid="stHorizontalBlock"] button:focus-visible,
-    div[data-testid="stHorizontalBlock"] button:active,
-    div[data-testid="column"] button:hover,
-    div[data-testid="column"] button:focus,
-    [data-testid="stVerticalBlock"] button:hover,
-    [data-testid="stVerticalBlock"] button:focus {
-        background-color: #F4F6FA !important;
-        background: #F4F6FA !important;
-        color: #4A6FA5 !important;
-        border-color: #4A6FA5 !important;
-        outline: none !important;
-    }
-
-    /* ถ้าเป็น primary — ใช้สีน้ำเงินเข้ม */
-    div[data-testid="stHorizontalBlock"] button[kind="primary"]:hover,
-    div[data-testid="stHorizontalBlock"] button[kind="primary"]:focus,
-    div[data-testid="stHorizontalBlock"] button[kind="primary"]:active,
-    div[data-testid="column"] button[kind="primary"]:hover {
-        background-color: #3A5A8C !important;
-        background: linear-gradient(135deg, #3A5A8C 0%, #4A6FA5 100%) !important;
-        color: #FFFFFF !important;
-        border-color: #3A5A8C !important;
-    }
-
-    /* Force child elements to inherit correct color */
-    div[data-testid="stHorizontalBlock"] button:hover *,
-    div[data-testid="stHorizontalBlock"] button:focus *,
-    div[data-testid="column"] button:hover *,
-    [data-testid="stVerticalBlock"] button:hover * {
-        color: #4A6FA5 !important;
-        background: transparent !important;
-    }
-    div[data-testid="stHorizontalBlock"] button[kind="primary"]:hover *,
-    div[data-testid="stHorizontalBlock"] button[kind="primary"]:focus *,
-    div[data-testid="column"] button[kind="primary"]:hover * {
-        color: #FFFFFF !important;
-    }
-
-    /* Streamlit button base — override shipping default */
-    button[data-testid="baseButton-secondary"],
-    button[data-testid="baseButton-primary"],
-    button[data-testid="baseButton-secondaryFormSubmit"],
-    button[data-testid="baseButton-primaryFormSubmit"] {
-        transition: all 0.15s ease !important;
-    }
-
-    /* กัน Streamlit ใช้ inline style override hover */
-    button[data-testid^="baseButton"]:hover {
-        background-color: #F4F6FA !important;
-        color: #4A6FA5 !important;
-    }
-    button[data-testid="baseButton-primary"]:hover,
-    button[data-testid="baseButton-primaryFormSubmit"]:hover {
-        background-color: #3A5A8C !important;
-        color: #FFFFFF !important;
-    }
-    button[data-testid^="baseButton"]:hover * {
-        color: inherit !important;
-    }
-
-    /* Tabs */
+        /* Tabs */
     .stTabs [data-baseweb="tab-list"] {
         background-color: #FFFFFF !important;
         border-bottom: 1px solid #E5E7EB !important;
@@ -704,139 +635,19 @@ st.markdown("""
     footer { visibility: hidden; }
     header[data-testid="stHeader"] { background: transparent !important; }
 
-    /* ============================================================ */
-    /* ULTRA-FINAL: Force button colors with MAX specificity         */
-    /* (วางสุดท้าย — ชนะทุก rule ก่อนหน้า + Streamlit defaults)        */
-    /* ============================================================ */
-
-    /* ===== ALL secondary/default buttons — NEVER turn dark ===== */
-    html body .stApp button:not([kind="primary"]),
-    html body .stApp [data-testid="stButton"] button:not([kind="primary"]),
-    html body div button:not([kind="primary"]) {
-        background-color: #FFFFFF !important;
-        background-image: none !important;
-        background: #FFFFFF !important;
-        color: #1F2937 !important;
-        border: 1px solid #D1D5DB !important;
-    }
-
-    html body .stApp button:not([kind="primary"]):hover,
-    html body .stApp button:not([kind="primary"]):focus,
-    html body .stApp button:not([kind="primary"]):focus-visible,
-    html body .stApp button:not([kind="primary"]):active,
-    html body div button:not([kind="primary"]):hover,
-    html body div button:not([kind="primary"]):focus {
+    /* ===== Button hover safety (กัน hover เป็นดำ) ===== */
+    .stButton button:hover, .stDownloadButton button:hover, .stFormSubmitButton button:hover {
         background-color: #EEF2F7 !important;
-        background-image: none !important;
-        background: #EEF2F7 !important;
         color: #4A6FA5 !important;
-        border: 1px solid #4A6FA5 !important;
-        outline: none !important;
-        box-shadow: 0 0 0 2px rgba(74, 111, 165, 0.15) !important;
+        border-color: #4A6FA5 !important;
     }
-
-    /* ทุก child element ต้องตามสีพ่อ */
-    html body .stApp button:not([kind="primary"]) *,
-    html body div button:not([kind="primary"]) * {
-        color: #1F2937 !important;
-        background: transparent !important;
-    }
-    html body .stApp button:not([kind="primary"]):hover *,
-    html body .stApp button:not([kind="primary"]):focus *,
-    html body div button:not([kind="primary"]):hover * {
-        color: #4A6FA5 !important;
-        background: transparent !important;
-    }
-
-    /* ===== ALL primary buttons — น้ำเงิน + text ขาว เสมอ ===== */
-    html body .stApp button[kind="primary"],
-    html body div button[kind="primary"] {
-        background-color: #4A6FA5 !important;
-        background-image: none !important;
-        background: #4A6FA5 !important;
-        color: #FFFFFF !important;
-        border: 1px solid #4A6FA5 !important;
-    }
-
-    html body .stApp button[kind="primary"]:hover,
-    html body .stApp button[kind="primary"]:focus,
-    html body .stApp button[kind="primary"]:focus-visible,
-    html body .stApp button[kind="primary"]:active,
-    html body div button[kind="primary"]:hover,
-    html body div button[kind="primary"]:focus {
+    .stButton button[kind="primary"]:hover, .stFormSubmitButton button[kind="primary"]:hover {
         background-color: #3A5A8C !important;
-        background-image: none !important;
-        background: #3A5A8C !important;
         color: #FFFFFF !important;
-        border: 1px solid #3A5A8C !important;
-        outline: none !important;
-        box-shadow: 0 0 0 2px rgba(74, 111, 165, 0.3) !important;
+        border-color: #3A5A8C !important;
     }
 
-    html body .stApp button[kind="primary"] *,
-    html body .stApp button[kind="primary"]:hover *,
-    html body .stApp button[kind="primary"]:focus *,
-    html body div button[kind="primary"] *,
-    html body div button[kind="primary"]:hover * {
-        color: #FFFFFF !important;
-        background: transparent !important;
-    }
 </style>
-""", unsafe_allow_html=True)
-
-# ====================================================================
-# JavaScript injection — กัน Streamlit ใส่ inline hover style สีดำ
-# ใช้ MutationObserver จับการเปลี่ยนแปลง + reset hover style ทันที
-# ====================================================================
-st.markdown("""
-<script>
-(function() {
-    // CSS rules ที่เราอยาก force
-    const cssText = `
-        button:not([kind="primary"]):hover {
-            background-color: #EEF2F7 !important;
-            color: #4A6FA5 !important;
-            border-color: #4A6FA5 !important;
-        }
-        button:not([kind="primary"]):hover * {
-            color: #4A6FA5 !important;
-        }
-        button[kind="primary"]:hover {
-            background-color: #3A5A8C !important;
-            color: #FFFFFF !important;
-        }
-        button[kind="primary"]:hover * {
-            color: #FFFFFF !important;
-        }
-    `;
-
-    function injectStyle() {
-        // เช็คก่อนว่า inject แล้วยัง
-        if (document.getElementById('lp-force-button-style')) return;
-
-        const style = document.createElement('style');
-        style.id = 'lp-force-button-style';
-        style.textContent = cssText;
-        // ใส่ที่ end of <head> เพื่อให้ priority สูงสุด
-        document.head.appendChild(style);
-    }
-
-    // inject ทันที
-    injectStyle();
-
-    // re-inject ถ้า Streamlit ลบ
-    const observer = new MutationObserver(function() {
-        injectStyle();
-    });
-    observer.observe(document.head, { childList: true, subtree: false });
-
-    // เมื่อ DOM โหลดเสร็จ ก็ inject อีกรอบ
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', injectStyle);
-    }
-    window.addEventListener('load', injectStyle);
-})();
-</script>
 """, unsafe_allow_html=True)
 
 
