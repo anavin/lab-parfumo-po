@@ -1104,6 +1104,20 @@ def update_po_procurement(po_id, supplier_name, supplier_contact, items_with_pri
 
         log_activity(po_id, user_name, "admin", "ordered",
                       f"สั่งกับ {supplier_name} | คาดได้ {expected_date or '-'}")
+
+        # ===== Notify ผู้สร้าง PO =====
+        try:
+            po = get_purchase_order(po_id)
+            if po and po.get('created_by'):
+                add_notification(
+                    po['created_by'],
+                    po_id,
+                    f"✅ {po.get('po_number', '-')} สั่งซื้อแล้ว",
+                    f"แอดมินสั่งกับ {supplier_name} • คาดว่าได้รับ {expected_date or '-'}",
+                )
+        except Exception:
+            pass
+
         return True
     except Exception as e:
         st.error(f"ไม่สำเร็จ: {e}")
@@ -1125,6 +1139,38 @@ def update_po_status(po_id, new_status, user_name, user_role, note="", tracking_
         sb.table("purchase_orders").update(upd).eq("id", po["id"]).execute()
         log_activity(po["id"], user_name, user_role, "status_changed",
                       f"{po['status']} → {new_status}" + (f" | {note}" if note else ""))
+
+        # ===== Notify ผู้สร้าง PO หรือ admin ตามสถานะ =====
+        try:
+            if new_status == "กำลังขนส่ง" and po.get('created_by'):
+                tk_msg = f" • Tracking: {tracking_number}" if tracking_number else ""
+                add_notification(
+                    po['created_by'], po["id"],
+                    f"🚚 {po.get('po_number', '-')} กำลังขนส่ง",
+                    f"Supplier ส่งของแล้ว{tk_msg} — เตรียมรับของได้",
+                )
+            elif new_status == "เสร็จสมบูรณ์" and po.get('created_by'):
+                add_notification(
+                    po['created_by'], po["id"],
+                    f"🎉 {po.get('po_number', '-')} เสร็จสมบูรณ์",
+                    f"ปิดงานเรียบร้อย",
+                )
+            elif new_status == "ยกเลิก":
+                # แจ้งทั้งผู้สร้าง + admin
+                if po.get('created_by'):
+                    add_notification(
+                        po['created_by'], po["id"],
+                        f"❌ {po.get('po_number', '-')} ถูกยกเลิก",
+                        f"โดย {user_name}" + (f" • {note}" if note else ""),
+                    )
+                notify_admins(
+                    po["id"],
+                    f"❌ {po.get('po_number', '-')} ถูกยกเลิก",
+                    f"โดย {user_name}",
+                )
+        except Exception:
+            pass
+
         return True
     except Exception:
         return False
@@ -1183,6 +1229,24 @@ def add_delivery(po_id, items_received, overall_condition, issue_description="",
             }).eq("id", po_id).execute()
             log_activity(po_id, user_name, "requester", "received",
                           f"รับของ #{d_no} | สภาพ: {overall_condition}")
+
+            # ===== Notify admin ตอนรับของ =====
+            try:
+                if new_status == "มีปัญหา":
+                    notify_admins(
+                        po_id,
+                        f"⚠️ {po.get('po_number', '-')} มีปัญหา",
+                        f"{user_name} แจ้ง: {issue_description or 'ของไม่ครบ/ไม่ตรงสเปค'}",
+                    )
+                else:
+                    notify_admins(
+                        po_id,
+                        f"📦 {po.get('po_number', '-')} รับของแล้ว",
+                        f"{user_name} รับของเรียบร้อย",
+                    )
+            except Exception:
+                pass
+
         return delivery
     except Exception as e:
         st.error(f"บันทึกไม่สำเร็จ: {e}")

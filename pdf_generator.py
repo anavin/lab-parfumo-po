@@ -13,7 +13,7 @@ FONT_BOLD = HERE / "fonts" / "Sarabun-Bold.ttf"
 
 
 # ----- Brand & Company -----
-BRAND_GOLD = "#C8A47E"
+BRAND_GOLD = "#4A6FA5"
 BRAND_DARK = "#3D3530"
 BRAND_LIGHT = "#F8F4EE"
 BRAND_BORDER = "#E8DDD0"
@@ -269,13 +269,24 @@ def _company_header_html():
 # PO PDF
 # ==================================================================
 
-def generate_po_pdf(po: dict) -> bytes:
-    """สร้าง PDF ใบ PO ส่ง supplier"""
+def generate_po_pdf(po: dict, role: str = "admin") -> bytes:
+    """สร้าง PDF ใบ PO ส่ง supplier
+    role: 'admin' = เห็นราคา/supplier ครบ, 'requester' = ซ่อนราคา/supplier"""
+    is_requester = role == "requester"
 
-    # Items rows
+    # Items rows — requester ไม่เห็นราคา
     items_rows = ""
     for i, item in enumerate(po.get('items', []), 1):
-        items_rows += f"""
+        if is_requester:
+            items_rows += f"""
+        <tr>
+            <td class="center">{i}</td>
+            <td>{item.get('name', '')}</td>
+            <td class="num">{item.get('qty', 0):,.0f}</td>
+            <td class="center">{item.get('unit', '')}</td>
+        </tr>"""
+        else:
+            items_rows += f"""
         <tr>
             <td class="center">{i}</td>
             <td>{item.get('name', '')}</td>
@@ -338,7 +349,7 @@ def generate_po_pdf(po: dict) -> bytes:
     </table>
     <hr class="header-divider"/>
 
-    <div class="info-box">
+    {f'''<div class="info-box">
         <table>
             <tr>
                 <td class="label">สั่งจาก / Supplier:</td>
@@ -346,12 +357,20 @@ def generate_po_pdf(po: dict) -> bytes:
             </tr>
             {f'<tr><td></td><td>{supplier_contact}</td></tr>' if supplier_contact else ''}
         </table>
-    </div>
+    </div>''' if not is_requester else ''}
 
     {exp_date_html}
 
     <h3>รายการสั่งซื้อ</h3>
-    <table class="items">
+    {f'''<table class="items">
+        <tr>
+            <th style="width:8%">#</th>
+            <th style="width:62%">รายการ</th>
+            <th style="width:15%">จำนวน</th>
+            <th style="width:15%">หน่วย</th>
+        </tr>
+        {items_rows}
+    </table>''' if is_requester else f'''<table class="items">
         <tr>
             <th style="width:6%">#</th>
             <th style="width:42%">รายการ</th>
@@ -361,12 +380,12 @@ def generate_po_pdf(po: dict) -> bytes:
             <th style="width:15%">รวม</th>
         </tr>
         {items_rows}
-    </table>
+    </table>'''}
 
-    <table class="summary">
+    {f'''<table class="summary">
         {summary_rows}
     </table>
-    <div class="clearfix"></div>
+    <div class="clearfix"></div>''' if not is_requester else ''}
 
     {notes_html}
 
