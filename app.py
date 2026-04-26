@@ -142,25 +142,88 @@ st.markdown("""
         color: #1F2937 !important;
         border: 1px solid #D1D5DB !important;
     }
-    .stButton button[kind="secondary"]:hover {
+    .stButton button[kind="secondary"] *,
+    .stButton button[kind="secondary"] p,
+    .stButton button[kind="secondary"] div,
+    .stButton button[kind="secondary"] span {
+        color: #1F2937 !important;
+    }
+    /* secondary hover/focus/active — ทุก state */
+    .stButton button[kind="secondary"]:hover,
+    .stButton button[kind="secondary"]:focus,
+    .stButton button[kind="secondary"]:focus-visible,
+    .stButton button[kind="secondary"]:active,
+    .stDownloadButton button[kind="secondary"]:hover,
+    .stFormSubmitButton button[kind="secondary"]:hover {
         background-color: #F4F6FA !important;
         border-color: #4A6FA5 !important;
         color: #4A6FA5 !important;
+        outline: none !important;
+        box-shadow: 0 0 0 2px rgba(74, 111, 165, 0.15) !important;
+    }
+    /* child element ใน secondary hover ก็ต้อง override ด้วย */
+    .stButton button[kind="secondary"]:hover *,
+    .stButton button[kind="secondary"]:hover p,
+    .stButton button[kind="secondary"]:hover div,
+    .stButton button[kind="secondary"]:hover span,
+    .stButton button[kind="secondary"]:focus *,
+    .stButton button[kind="secondary"]:focus p,
+    .stButton button[kind="secondary"]:active *,
+    .stDownloadButton button[kind="secondary"]:hover *,
+    .stFormSubmitButton button[kind="secondary"]:hover * {
+        color: #4A6FA5 !important;
     }
 
-    /* Buttons — primary (ปุ่มน้ำเงิน) — ตัวหนังสือต้องขาว */
+    /* Buttons — primary (ปุ่มน้ำเงิน) — ตัวหนังสือต้องขาวเสมอ */
     .stButton button[kind="primary"], .stDownloadButton button[kind="primary"],
     .stFormSubmitButton button[kind="primary"] {
         background-color: #4A6FA5 !important;
         color: #FFFFFF !important;
         border: 1px solid #4A6FA5 !important;
     }
-    .stButton button[kind="primary"] *, .stButton button[kind="primary"] p {
+    .stButton button[kind="primary"] *,
+    .stButton button[kind="primary"] p,
+    .stButton button[kind="primary"] div,
+    .stButton button[kind="primary"] span {
         color: #FFFFFF !important;
     }
-    .stButton button[kind="primary"]:hover {
+    .stButton button[kind="primary"]:hover,
+    .stButton button[kind="primary"]:focus,
+    .stButton button[kind="primary"]:focus-visible,
+    .stButton button[kind="primary"]:active {
         background-color: #3A5A8C !important;
+        border-color: #3A5A8C !important;
         color: #FFFFFF !important;
+        outline: none !important;
+        box-shadow: 0 0 0 2px rgba(74, 111, 165, 0.3) !important;
+    }
+    .stButton button[kind="primary"]:hover *,
+    .stButton button[kind="primary"]:hover p,
+    .stButton button[kind="primary"]:hover div,
+    .stButton button[kind="primary"]:hover span,
+    .stButton button[kind="primary"]:focus *,
+    .stButton button[kind="primary"]:active * {
+        color: #FFFFFF !important;
+    }
+
+    /* Streamlit ใช้ <button> โดยไม่มี kind ในบางที่ — fallback */
+    .stButton > button:not([kind="primary"]),
+    .stDownloadButton > button:not([kind="primary"]),
+    .stFormSubmitButton > button:not([kind="primary"]) {
+        background-color: #FFFFFF !important;
+        color: #1F2937 !important;
+        border: 1px solid #D1D5DB !important;
+    }
+    .stButton > button:not([kind="primary"]):hover,
+    .stButton > button:not([kind="primary"]):focus,
+    .stDownloadButton > button:not([kind="primary"]):hover {
+        background-color: #F4F6FA !important;
+        border-color: #4A6FA5 !important;
+        color: #4A6FA5 !important;
+    }
+    .stButton > button:not([kind="primary"]):hover *,
+    .stButton > button:not([kind="primary"]):focus * {
+        color: #4A6FA5 !important;
     }
 
     /* Tabs */
@@ -316,21 +379,35 @@ st.markdown("""
     }
     .stButton button[kind="primary"]:hover {
         background: linear-gradient(135deg, var(--gold-dark) 0%, var(--gold) 100%) !important;
+        color: #FFFFFF !important;
         box-shadow: var(--shadow-gold) !important;
         transform: translateY(-1px);
     }
+    .stButton button[kind="primary"]:hover *,
+    .stButton button[kind="primary"]:hover p,
+    .stButton button[kind="primary"]:hover div {
+        color: #FFFFFF !important;
+    }
     .stButton button[kind="primary"]:active {
         transform: translateY(0);
+        color: #FFFFFF !important;
     }
     .stButton button[kind="secondary"] {
         background: var(--bg-card) !important;
         border: 1px solid var(--border-soft) !important;
+        color: #1F2937 !important;
         transition: all 0.2s ease !important;
     }
     .stButton button[kind="secondary"]:hover {
         background: var(--bg-card-hover) !important;
         border-color: var(--border-active) !important;
+        color: #4A6FA5 !important;
         transform: translateY(-1px);
+    }
+    .stButton button[kind="secondary"]:hover *,
+    .stButton button[kind="secondary"]:hover p,
+    .stButton button[kind="secondary"]:hover div {
+        color: #4A6FA5 !important;
     }
 
     /* ----- Metric cards ----- */
