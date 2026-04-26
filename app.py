@@ -349,12 +349,29 @@ def restore_session_from_cookie():
     try:
         token = _cookie_controller.get('lp_session')
         if not token:
-            return
+            # Cookie อาจยังไม่ sync — ลอง rerun ครั้งเดียวให้ component โหลดเสร็จ
+            # (cookies-controller มี delay ครั้งแรกหลัง refresh)
+            if not st.session_state.get('_cookie_retry'):
+                st.session_state['_cookie_retry'] = True
+                # ใช้ getAll เป็น fallback (บางเวอร์ชันต้องเรียกแบบนี้)
+                try:
+                    all_cookies = _cookie_controller.getAll()
+                    if all_cookies:
+                        token = all_cookies.get('lp_session')
+                except Exception:
+                    pass
+            if not token:
+                return
         user = db.verify_session_token(token, max_idle_minutes=SESSION_TIMEOUT_MIN)
         if user:
             st.session_state['user'] = user
             st.session_state['session_token'] = token
             st.session_state['last_activity'] = datetime.now().isoformat()
+            # ใส่กลับใน URL ด้วย
+            try:
+                st.query_params['t'] = token
+            except Exception:
+                pass
         else:
             # token หมดอายุ — ลบ cookie
             try:
@@ -1177,7 +1194,7 @@ from pages_withdraw import render_withdraw
 # Main
 # ==================================================================
 
-SESSION_TIMEOUT_MIN = 5  # auto logout หลังไม่ได้ใช้ 5 นาที
+SESSION_TIMEOUT_MIN = 60  # auto logout หลังไม่ได้ใช้ 60 นาที (1 ชั่วโมง)
 
 
 def check_session_timeout():
@@ -1256,14 +1273,33 @@ def force_change_password_page():
 
 
 def main():
-    # ลอง restore session — URL ก่อน (เร็วและเสถียรกว่า), cookie เป็น fallback
+    # ===== Restore session — try URL first (stable), then cookie =====
     restore_session_from_url()
     if not st.session_state.get('user'):
+        # Cookie อาจมี delay sync — ลองอ่านอีกครั้ง
         restore_session_from_cookie()
+        # ถ้ายังไม่ได้ user แต่มี token ใน session → re-verify
+        if not st.session_state.get('user'):
+            tk = st.session_state.get('session_token')
+            if tk:
+                user = db.verify_session_token(tk, max_idle_minutes=SESSION_TIMEOUT_MIN)
+                if user:
+                    st.session_state['user'] = user
+                    st.session_state['last_activity'] = datetime.now().isoformat()
 
     if not st.session_state.get('user'):
         login_page()
         return
+
+    # ===== Sync URL with token (กัน refresh แล้ว URL หาย token) =====
+    tk = st.session_state.get('session_token')
+    if tk:
+        try:
+            cur_t = st.query_params.get('t')
+            if cur_t != tk:
+                st.query_params['t'] = tk
+        except Exception:
+            pass
 
     # เช็ค session timeout
     if check_session_timeout():
