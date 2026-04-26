@@ -29,251 +29,642 @@ st.set_page_config(
 
 # Lab Parfumo Premium Styling
 st.markdown("""
+<meta name="color-scheme" content="light">
 <style>
-    /* ============================================ */
-    /* Lab Parfumo — Steel Blue Theme               */
-    /* ============================================ */
+/* ============================================================ */
+/* Lab Parfumo PO Pro — B2B Design System                       */
+/* ============================================================ */
 
-    /* Headings */
-    h1, h2, h3 {
-        color: #4A6FA5;
-        letter-spacing: 0.3px;
-    }
-    h1 {
-        background: linear-gradient(135deg, #4A6FA5 0%, #A8C0E0 50%, #4A6FA5 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-        font-weight: 700;
-    }
+/* ===== CSS Variables ===== */
+:root {
+    /* Slate scale */
+    --slate-900: #0F172A; --slate-800: #1E293B; --slate-700: #334155;
+    --slate-600: #475569; --slate-500: #64748B; --slate-400: #94A3B8;
+    --slate-300: #CBD5E1; --slate-200: #E2E8F0; --slate-100: #F1F5F9;
+    --slate-50:  #F8FAFC; --white: #FFFFFF;
 
-    /* Primary buttons (น้ำเงิน gradient) */
-    .stButton button[kind="primary"],
-    .stFormSubmitButton button[kind="primary"],
-    .stDownloadButton button[kind="primary"] {
-        background: linear-gradient(135deg, #4A6FA5 0%, #3A5A8C 100%);
-        border: none;
-        color: white;
-        font-weight: 500;
-        letter-spacing: 0.3px;
-        transition: all 0.2s ease;
-    }
-    .stButton button[kind="primary"]:hover,
-    .stFormSubmitButton button[kind="primary"]:hover,
-    .stDownloadButton button[kind="primary"]:hover {
-        background: linear-gradient(135deg, #3A5A8C 0%, #4A6FA5 100%);
-        color: white;
-        box-shadow: 0 4px 16px rgba(74, 111, 165, 0.3);
-        transform: translateY(-1px);
-    }
+    /* Brand scale */
+    --brand-900: #1E3A5F; --brand-800: #2E4D78; --brand-700: #3A5A8C;
+    --brand-600: #4A6FA5; --brand-500: #6388B7; --brand-400: #8FA8C9;
+    --brand-300: #A8C0E0; --brand-100: #E8EFF8; --brand-50:  #F4F7FB;
 
-    /* Tabs active */
-    .stTabs [data-baseweb="tab"][aria-selected="true"] {
-        color: #4A6FA5;
-        border-bottom-color: #4A6FA5;
-    }
+    /* Semantic */
+    --success: #059669; --success-soft: #ECFDF5;
+    --warning: #D97706; --warning-soft: #FFFBEB;
+    --danger:  #DC2626; --danger-soft:  #FEF2F2;
+    --info:    #2563EB; --info-soft:    #EFF6FF;
 
-    /* Metric */
-    div[data-testid="stMetricValue"] {
-        color: #4A6FA5;
-        font-weight: 600;
-    }
+    /* Effects */
+    --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.05);
+    --shadow-sm: 0 2px 4px rgba(15, 23, 42, 0.06);
+    --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+    --shadow-lg: 0 8px 24px rgba(15, 23, 42, 0.12);
+    --shadow-brand: 0 4px 12px rgba(74, 111, 165, 0.25);
 
-    /* Container with border */
-    div[data-testid="stVerticalBlockBorderWrapper"] {
-        border-radius: 12px;
-    }
+    color-scheme: light;
+}
 
-    /* ----- Brand Header (ใช้ใน render_header) ----- */
-    /* Container with border */
-    div[data-testid="stVerticalBlockBorderWrapper"] {
-        border-radius: 12px;
-        transition: all 0.2s ease;
-    }
-    div[data-testid="stVerticalBlockBorderWrapper"]:hover {
-        box-shadow: 0 4px 16px rgba(74, 111, 165, 0.1);
-        border-color: rgba(74, 111, 165, 0.3) !important;
-    }
+/* ===== Light theme everywhere ===== */
+html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
+    background-color: var(--slate-50);
+    color: var(--slate-800);
+}
+[data-testid="stHeader"] { background: transparent !important; }
 
-    /* Metric cards (Dashboard) */
-    div[data-testid="stMetric"] {
-        background: linear-gradient(135deg, #F4F6FA 0%, #FFFFFF 100%);
-        border: 1px solid rgba(74, 111, 165, 0.15);
-        border-radius: 12px;
-        padding: 14px 18px;
-        transition: all 0.2s ease;
-    }
-    div[data-testid="stMetric"]:hover {
-        border-color: rgba(74, 111, 165, 0.4);
-        box-shadow: 0 4px 16px rgba(74, 111, 165, 0.12);
-        transform: translateY(-2px);
-    }
+/* ===== Typography ===== */
+h1 {
+    color: var(--slate-900);
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+    line-height: 1.2;
+}
+h2 {
+    color: var(--slate-900);
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.2px;
+}
+h3 {
+    color: var(--slate-800);
+    font-size: 14px;
+    font-weight: 600;
+}
 
-    /* Inputs sleeker */
-    .stTextInput input, .stNumberInput input, .stTextArea textarea,
-    .stDateInput input, [data-baseweb="select"] > div {
-        border-radius: 8px !important;
-        transition: all 0.2s ease;
-    }
-    .stTextInput input:focus, .stNumberInput input:focus,
-    .stTextArea textarea:focus {
-        border-color: #4A6FA5 !important;
-        box-shadow: 0 0 0 3px rgba(74, 111, 165, 0.1) !important;
-    }
+/* ===== Primary button — gradient ===== */
+.stButton button[kind="primary"],
+.stFormSubmitButton button[kind="primary"],
+.stDownloadButton button[kind="primary"] {
+    background: linear-gradient(135deg, var(--brand-600), var(--brand-800));
+    color: var(--white);
+    border: none;
+    border-radius: 8px;
+    padding: 9px 16px;
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.2px;
+    box-shadow: var(--shadow-sm);
+    transition: all 0.15s ease;
+}
+.stButton button[kind="primary"]:hover,
+.stFormSubmitButton button[kind="primary"]:hover {
+    background: linear-gradient(135deg, var(--brand-700), var(--brand-900));
+    color: var(--white);
+    box-shadow: var(--shadow-brand);
+    transform: translateY(-1px);
+}
 
-    /* Expander */
-    [data-testid="stExpander"] summary {
-        border-radius: 8px;
-        transition: all 0.2s ease;
-    }
-    [data-testid="stExpander"] summary:hover {
-        background: rgba(74, 111, 165, 0.05);
-    }
+/* ===== Secondary button — clean white ===== */
+.stButton button[kind="secondary"],
+.stFormSubmitButton button[kind="secondary"],
+.stDownloadButton button[kind="secondary"] {
+    background: var(--white);
+    color: var(--slate-700);
+    border: 1px solid var(--slate-300);
+    border-radius: 8px;
+    padding: 9px 16px;
+    font-weight: 600;
+    font-size: 13px;
+    transition: all 0.15s ease;
+}
+.stButton button[kind="secondary"]:hover {
+    background: var(--brand-50);
+    border-color: var(--brand-600);
+    color: var(--brand-700);
+}
 
-    /* Divider */
-    hr, [data-testid="stDivider"] {
-        border-color: rgba(74, 111, 165, 0.15);
-    }
+/* ===== Tabs ===== */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 4px;
+    border-bottom: 1px solid var(--slate-200);
+}
+.stTabs [data-baseweb="tab"] {
+    color: var(--slate-500);
+    font-weight: 500;
+    border-radius: 6px 6px 0 0;
+    padding: 8px 14px;
+}
+.stTabs [data-baseweb="tab"][aria-selected="true"] {
+    color: var(--brand-700) !important;
+    border-bottom-color: var(--brand-700) !important;
+    font-weight: 600;
+}
 
-    /* All buttons — better radius + transition */
-    .stButton button {
-        border-radius: 8px !important;
-        transition: all 0.2s ease !important;
-    }
+/* ===== Inputs ===== */
+.stTextInput input, .stNumberInput input, .stTextArea textarea,
+.stDateInput input, [data-baseweb="select"] > div {
+    border-radius: 8px !important;
+    border-color: var(--slate-300) !important;
+    transition: all 0.15s ease;
+}
+.stTextInput input:focus, .stNumberInput input:focus, .stTextArea textarea:focus {
+    border-color: var(--brand-600) !important;
+    box-shadow: 0 0 0 3px var(--brand-100) !important;
+}
 
-    /* ----- Brand Header (premium) ----- */
-    .brand-header {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        padding: 10px 16px;
-        background: linear-gradient(135deg, rgba(74, 111, 165, 0.06) 0%, rgba(168, 192, 224, 0.08) 100%);
-        border-radius: 12px;
-        border: 1px solid rgba(74, 111, 165, 0.12);
-    }
-    .brand-logo {
-        width: 44px; height: 44px;
-        background: linear-gradient(135deg, #4A6FA5, #3A5A8C);
-        border-radius: 12px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 22px;
-        color: white;
-        box-shadow: 0 4px 12px rgba(74, 111, 165, 0.35);
-        flex-shrink: 0;
-    }
-    .brand-name {
-        font-size: 18px;
-        font-weight: 700;
-        color: #4A6FA5;
-        letter-spacing: -0.3px;
-        line-height: 1.1;
-        margin: 0;
-    }
-    .brand-meta {
-        font-size: 11px;
-        color: #6B7280;
-        margin-top: 3px;
-        line-height: 1;
-        display: flex;
-        align-items: center;
-        gap: 4px;
-    }
-    .brand-role {
-        background: rgba(74, 111, 165, 0.1);
-        color: #4A6FA5;
-        padding: 1px 7px;
-        border-radius: 8px;
-        font-weight: 600;
-        font-size: 10px;
-    }
+/* ===== Containers (with border) ===== */
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    border-radius: 12px !important;
+    border-color: var(--slate-200) !important;
+}
 
-    /* Login splash */
-    .login-splash {
-        text-align: center;
-        margin: 40px 0;
-    }
-    .login-logo {
-        width: 80px; height: 80px;
-        background: linear-gradient(135deg, #4A6FA5, #3A5A8C);
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 40px;
-        color: white;
-        margin: 0 auto 16px;
-        box-shadow: 0 4px 16px rgba(74, 111, 165, 0.3);
-    }
-    .login-title {
-        font-size: 32px;
-        font-weight: 700;
-        background: linear-gradient(135deg, #4A6FA5 0%, #A8C0E0 50%, #4A6FA5 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-        margin-bottom: 4px;
-    }
-    .login-subtitle {
-        font-size: 14px;
-        color: #6B7280;
-        letter-spacing: 0.5px;
-    }
+/* ===== Metric cards ===== */
+div[data-testid="stMetric"] {
+    background: var(--white);
+    border: 1px solid var(--slate-200);
+    border-radius: 12px;
+    padding: 14px 18px;
+    transition: all 0.15s ease;
+}
+div[data-testid="stMetric"]:hover {
+    border-color: var(--brand-300);
+    box-shadow: var(--shadow-sm);
+}
+div[data-testid="stMetricValue"] {
+    color: var(--slate-900) !important;
+    font-weight: 700 !important;
+    font-size: 26px !important;
+}
+div[data-testid="stMetricLabel"] {
+    color: var(--slate-500) !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+div[data-testid="stMetricDelta"] {
+    font-size: 11px !important;
+    font-weight: 600;
+}
 
-    /* Empty state */
-    .empty-state {
-        text-align: center;
-        padding: 40px 20px;
-        background: #F4F6FA;
-        border-radius: 12px;
-        border: 1px dashed #D1D5DB;
-    }
-    .empty-icon {
-        font-size: 48px;
-        margin-bottom: 12px;
-        opacity: 0.6;
-    }
-    .empty-title {
-        color: #4A6FA5;
-        font-size: 18px;
-        font-weight: 500;
-        margin-bottom: 8px;
-    }
-    .empty-text {
-        color: #6B7280;
-        font-size: 14px;
-        max-width: 400px;
-        margin: 0 auto 16px;
-    }
+/* ===== Expander ===== */
+[data-testid="stExpander"] {
+    border-radius: 10px !important;
+    border-color: var(--slate-200) !important;
+}
+[data-testid="stExpander"] summary {
+    border-radius: 10px !important;
+    background: var(--white);
+}
+[data-testid="stExpander"] summary:hover {
+    background: var(--brand-50);
+}
 
-    /* Alerts */
-    .alert {
-        padding: 12px 16px;
-        border-radius: 8px;
-        margin-bottom: 12px;
-    }
+/* ===== Hide branding ===== */
+#MainMenu { visibility: hidden; }
+footer { visibility: hidden; }
+header[data-testid="stHeader"] { background: transparent !important; }
 
-    /* Badges */
-    .badge {
-        display: inline-block;
-        padding: 3px 12px;
-        border-radius: 12px;
-        font-size: 12px;
-        font-weight: 500;
-    }
+/* ============================================================ */
+/* Custom Components                                            */
+/* ============================================================ */
 
-    /* Hide Streamlit branding */
-    #MainMenu { visibility: hidden; }
-    footer { visibility: hidden; }
+/* ----- App Top Bar (sticky header) ----- */
+.app-topbar {
+    background: var(--white);
+    border: 1px solid var(--slate-200);
+    border-radius: 12px;
+    padding: 10px 16px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: var(--shadow-xs);
+}
+.brand-block {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+.brand-logo-sm {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, var(--brand-600), var(--brand-800));
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: white;
+    box-shadow: var(--shadow-brand);
+}
+.brand-text { line-height: 1.1; }
+.brand-text-name {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--slate-900);
+}
+.brand-text-tag {
+    font-size: 10px;
+    color: var(--slate-500);
+    font-weight: 500;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+}
 
-    /* Mobile responsive */
-    @media (max-width: 768px) {
-        h1 { font-size: 24px; }
-        h2 { font-size: 20px; }
-        h3 { font-size: 16px; }
-        .stButton button { min-height: 44px; font-size: 14px; }
-    }
+/* User pill */
+.user-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px 4px 4px;
+    background: var(--slate-50);
+    border: 1px solid var(--slate-200);
+    border-radius: 20px;
+    font-size: 12px;
+}
+.user-avatar {
+    width: 28px; height: 28px;
+    background: linear-gradient(135deg, var(--brand-500), var(--brand-700));
+    border-radius: 50%;
+    color: white;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+}
+.user-info-name { color: var(--slate-700); font-weight: 600; line-height: 1; }
+.user-info-role { color: var(--slate-500); font-size: 10px; line-height: 1.2; }
+
+/* ----- Page Title ----- */
+.page-title-block {
+    margin-bottom: 16px;
+}
+.page-title-text {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--slate-900);
+    line-height: 1.2;
+    margin-bottom: 2px;
+}
+.page-title-sub {
+    font-size: 13px;
+    color: var(--slate-500);
+}
+
+/* ----- KPI Hero ----- */
+.kpi-hero {
+    background: linear-gradient(135deg, var(--brand-900), var(--brand-700));
+    color: white;
+    padding: 20px 24px;
+    border-radius: 14px;
+    margin-bottom: 16px;
+    position: relative;
+    overflow: hidden;
+}
+.kpi-hero::before {
+    content: '';
+    position: absolute;
+    top: -50px; right: -50px;
+    width: 200px; height: 200px;
+    background: radial-gradient(circle, rgba(255,255,255,0.08), transparent);
+    border-radius: 50%;
+}
+.kpi-hero-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    gap: 24px;
+    position: relative;
+    z-index: 1;
+}
+.kpi-label {
+    font-size: 11px;
+    color: rgba(255,255,255,0.7);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    font-weight: 600;
+}
+.kpi-value-main { font-size: 32px; font-weight: 700; line-height: 1.1; margin-bottom: 4px; }
+.kpi-value-side { font-size: 22px; font-weight: 700; line-height: 1.1; margin-bottom: 2px; }
+.kpi-trend {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(16, 185, 129, 0.18);
+    color: #6EE7B7;
+    padding: 2px 9px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+}
+.kpi-trend.down { background: rgba(220, 38, 38, 0.18); color: #FCA5A5; }
+.kpi-meta { font-size: 11px; color: rgba(255,255,255,0.6); margin-top: 2px; }
+.kpi-side {
+    border-left: 1px solid rgba(255,255,255,0.15);
+    padding-left: 20px;
+}
+
+/* ----- Status Pills ----- */
+.lp-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    border: 1px solid transparent;
+    white-space: nowrap;
+}
+.lp-pill::before {
+    content: '';
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.lp-pill.pending { background: var(--warning-soft); color: var(--warning); border-color: rgba(217, 119, 6, 0.2); }
+.lp-pill.pending::before { background: var(--warning); }
+.lp-pill.ordered { background: var(--info-soft); color: var(--info); border-color: rgba(37, 99, 235, 0.2); }
+.lp-pill.ordered::before { background: var(--info); }
+.lp-pill.shipping { background: var(--brand-100); color: var(--brand-700); border-color: rgba(74, 111, 165, 0.2); }
+.lp-pill.shipping::before { background: var(--brand-700); }
+.lp-pill.received { background: var(--success-soft); color: var(--success); border-color: rgba(5, 150, 105, 0.2); }
+.lp-pill.received::before { background: var(--success); }
+.lp-pill.done { background: var(--success-soft); color: var(--success); }
+.lp-pill.done::before { background: var(--success); }
+.lp-pill.problem { background: var(--danger-soft); color: var(--danger); }
+.lp-pill.problem::before { background: var(--danger); }
+.lp-pill.cancel { background: var(--slate-100); color: var(--slate-500); }
+.lp-pill.cancel::before { background: var(--slate-400); }
+
+/* ----- Status Cards (Dashboard grid) ----- */
+.status-card {
+    background: var(--white);
+    border: 1px solid var(--slate-200);
+    border-radius: 10px;
+    padding: 12px 14px;
+    transition: all 0.15s;
+    position: relative;
+}
+.status-card:hover {
+    border-color: var(--brand-600);
+    box-shadow: var(--shadow-sm);
+    transform: translateY(-1px);
+}
+.status-card-icon { font-size: 14px; margin-bottom: 4px; }
+.status-card-num {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--slate-900);
+    line-height: 1;
+}
+.status-card-label {
+    font-size: 11px;
+    color: var(--slate-500);
+    margin-top: 4px;
+    font-weight: 500;
+}
+.status-card.warn::after {
+    content: '';
+    position: absolute;
+    top: 10px; right: 10px;
+    width: 6px; height: 6px;
+    background: var(--warning);
+    border-radius: 50%;
+    box-shadow: 0 0 0 4px var(--warning-soft);
+}
+
+/* ----- Action Item Row ----- */
+.action-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--slate-100);
+}
+.action-row:last-child { border-bottom: none; }
+.action-icon {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 16px;
+}
+.action-icon.warn { background: var(--warning-soft); color: var(--warning); }
+.action-icon.danger { background: var(--danger-soft); color: var(--danger); }
+.action-icon.info { background: var(--info-soft); color: var(--info); }
+.action-icon.brand { background: var(--brand-100); color: var(--brand-700); }
+.action-icon.success { background: var(--success-soft); color: var(--success); }
+.action-content { flex: 1; min-width: 0; }
+.action-title-text {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--slate-900);
+    margin-bottom: 2px;
+}
+.action-meta-text {
+    font-size: 12px;
+    color: var(--slate-500);
+}
+.action-time-text {
+    font-size: 11px;
+    color: var(--slate-400);
+    flex-shrink: 0;
+}
+
+/* ----- Insight Cards (small) ----- */
+.insight-card {
+    background: var(--white);
+    border: 1px solid var(--slate-200);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+}
+.insight-label {
+    font-size: 11px;
+    color: var(--slate-500);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+.insight-value {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--slate-900);
+    margin-bottom: 2px;
+    line-height: 1.2;
+}
+.insight-meta {
+    font-size: 12px;
+    color: var(--slate-500);
+}
+
+/* ----- PO Row (table-style) ----- */
+.po-row-card {
+    background: var(--white);
+    border: 1px solid var(--slate-200);
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-bottom: 8px;
+    transition: all 0.15s;
+}
+.po-row-card:hover {
+    border-color: var(--brand-300);
+    box-shadow: var(--shadow-sm);
+}
+.po-num {
+    color: var(--brand-700);
+    font-weight: 700;
+    font-size: 13px;
+    font-family: 'SF Mono', 'Monaco', monospace;
+}
+
+/* ----- Workflow Timeline ----- */
+.workflow {
+    display: flex;
+    gap: 0;
+    align-items: flex-start;
+    background: var(--slate-50);
+    padding: 16px 20px;
+    border-radius: 10px;
+    margin-bottom: 16px;
+}
+.workflow-step {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    min-width: 0;
+    padding: 0 4px;
+}
+.workflow-step:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    right: -50%;
+    top: 14px;
+    width: 100%;
+    height: 2px;
+    background: var(--slate-300);
+    z-index: 0;
+}
+.workflow-step.done:not(:last-child)::after,
+.workflow-step.active:not(:last-child)::after {
+    background: var(--brand-600);
+}
+.workflow-dot {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--white);
+    border: 2px solid var(--slate-300);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--slate-400);
+    z-index: 1;
+}
+.workflow-step.done .workflow-dot {
+    background: var(--brand-600);
+    border-color: var(--brand-600);
+    color: white;
+}
+.workflow-step.active .workflow-dot {
+    background: var(--brand-600);
+    border-color: var(--brand-600);
+    color: white;
+    box-shadow: 0 0 0 4px var(--brand-100);
+}
+.workflow-step.problem .workflow-dot {
+    background: var(--danger);
+    border-color: var(--danger);
+    color: white;
+}
+.workflow-label {
+    font-size: 11px;
+    color: var(--slate-500);
+    margin-top: 6px;
+    font-weight: 500;
+    text-align: center;
+    line-height: 1.2;
+}
+.workflow-step.done .workflow-label,
+.workflow-step.active .workflow-label {
+    color: var(--slate-900);
+    font-weight: 600;
+}
+.workflow-step.active .workflow-label { color: var(--brand-700); }
+
+/* ----- Section Title (small uppercase) ----- */
+.section-uppercase {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--slate-500);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 8px;
+}
+
+/* ----- Login Splash ----- */
+.login-bg-wrapper {
+    background: linear-gradient(135deg, var(--slate-900), var(--brand-900));
+    margin: -40px -50px;
+    padding: 60px 50px;
+    border-radius: 16px;
+    min-height: 600px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+}
+.login-card-inner {
+    background: var(--white);
+    border-radius: 16px;
+    padding: 32px;
+    width: 100%;
+    max-width: 380px;
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.4);
+}
+.login-logo {
+    width: 64px; height: 64px;
+    background: linear-gradient(135deg, var(--brand-600), var(--brand-800));
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    color: white;
+    box-shadow: var(--shadow-brand);
+    margin: 0 auto 16px;
+}
+.login-title {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--slate-900);
+    text-align: center;
+    margin-bottom: 4px;
+}
+.login-sub {
+    color: var(--slate-500);
+    font-size: 13px;
+    text-align: center;
+    margin-bottom: 8px;
+}
+.login-badge {
+    display: inline-block;
+    background: var(--brand-100);
+    color: var(--brand-700);
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+}
+.login-badge-wrap { text-align: center; margin-bottom: 20px; }
+
+/* ----- Mobile responsive ----- */
+@media (max-width: 768px) {
+    .kpi-hero-grid { grid-template-columns: 1fr; }
+    .kpi-side { border-left: none; border-top: 1px solid rgba(255,255,255,0.15); padding-left: 0; padding-top: 14px; margin-top: 4px; }
+    .workflow-label { font-size: 10px; }
+    .stButton button { min-height: 40px; font-size: 13px; }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -398,43 +789,46 @@ init_session()
 # ==================================================================
 
 def login_page():
-    st.markdown("""
-    <div class="login-splash">
-        <div class="login-logo">📦</div>
-        <div class="login-title">Lab Parfumo</div>
-        <div class="login-subtitle">PO Management System</div>
-    </div>
-    """, unsafe_allow_html=True)
+    # Login layout with dark gradient bg
+    st.markdown('<div class="login-bg-wrapper">', unsafe_allow_html=True)
 
-    c1, c2, c3 = st.columns([1, 2, 1])
+    c1, c2, c3 = st.columns([1, 1.2, 1])
     with c2:
+        st.markdown("""
+        <div class="login-card-inner">
+            <div class="login-logo">📦</div>
+            <div class="login-title">Lab Parfumo</div>
+            <div class="login-sub">Purchase Order Management System</div>
+            <div class="login-badge-wrap">
+                <span class="login-badge">บริษัท ทัช ไดเวอร์เจนซ์ จำกัด</span>
+            </div>
+        """, unsafe_allow_html=True)
+
         with st.form("login_form"):
-            st.markdown("### 🔒 เข้าสู่ระบบ")
-            u = st.text_input("ชื่อผู้ใช้", placeholder="username")
-            p = st.text_input("รหัสผ่าน", type="password", placeholder="••••••••")
-            if st.form_submit_button("เข้าสู่ระบบ", type="primary",
-                                       use_container_width=True):
+            u = st.text_input("ชื่อผู้ใช้", placeholder="username", key="login_u")
+            p = st.text_input("รหัสผ่าน", type="password",
+                              placeholder="••••••••", key="login_p")
+            submitted = st.form_submit_button(
+                "เข้าสู่ระบบ →", type="primary", use_container_width=True
+            )
+            if submitted:
                 if not u or not p:
                     st.warning("⚠️ กรุณากรอกทั้งชื่อผู้ใช้และรหัสผ่าน")
-                # เช็คว่าโดนล็อคไหม
                 elif db._is_account_locked(u):
-                    st.error("🔒 บัญชีนี้ถูกล็อคชั่วคราว — รอ 15 นาที แล้วลองใหม่ "
-                             "(ผิดพลาดเกิน 5 ครั้งใน 15 นาที)")
+                    st.error("🔒 บัญชีนี้ถูกล็อคชั่วคราว — รอ 15 นาที แล้วลองใหม่")
                 else:
                     with st.spinner("กำลังตรวจสอบ..."):
                         user = db.verify_user(u, p)
                     if user:
-                        # สร้าง session token + ใส่ใน URL (refresh จะกลับมา login)
                         token = db.create_session_token(user['id'])
                         if token:
                             st.query_params['t'] = token
-                            save_session_to_cookie(token)  # backup
+                            save_session_to_cookie(token)
                         st.session_state['user'] = user
                         st.session_state['session_token'] = token
                         st.session_state['last_activity'] = datetime.now().isoformat()
                         st.rerun()
                     else:
-                        # นับจำนวนผิด
                         fails = db.get_failed_attempts_count(u)
                         remaining = 5 - fails
                         if remaining <= 0:
@@ -444,13 +838,17 @@ def login_page():
                         else:
                             st.error("❌ ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง")
 
+        st.markdown("</div>", unsafe_allow_html=True)  # close login-card-inner
+
         with st.expander("ℹ️ บัญชีเริ่มต้น (สำหรับทดสอบ)"):
             st.code(
-                "admin / admin123     → แอดมิน + จัดซื้อ (เห็นทุกอย่าง)\n"
-                "staff1 / staff123    → ผู้สั่ง (ไม่เห็นราคา/supplier)",
+                "admin / admin123     → แอดมิน + จัดซื้อ\n"
+                "staff1 / staff123    → ผู้สั่ง",
                 language="text",
             )
-            st.caption("⚠️ **สำคัญ:** หลังใช้ครั้งแรก ระบบจะบังคับให้เปลี่ยนรหัสผ่าน")
+            st.caption("⚠️ **สำคัญ:** หลังใช้ครั้งแรก ระบบจะบังคับเปลี่ยนรหัสผ่าน")
+
+    st.markdown("</div>", unsafe_allow_html=True)  # close login-bg-wrapper
 
 
 # ==================================================================
@@ -464,20 +862,26 @@ def render_header():
 
     # ===== Layout: Brand | Main Nav | Actions =====
     if is_admin():
-        # admin: 4 main + 1 dropdown
         c1, c2, c3 = st.columns([2.5, 6, 1.8])
     else:
         c1, c2, c3 = st.columns([2.5, 5, 1.8])
 
-    # ----- Brand -----
+    # ----- Brand block (B2B style) -----
     with c1:
+        avatar_letter = (user['full_name'] or 'U')[0].upper()
         st.markdown(f"""
-        <div class="brand-header">
-            <div class="brand-logo">📦</div>
-            <div style="flex:1; min-width:0;">
-                <div class="brand-name">Lab Parfumo</div>
-                <div class="brand-meta">
-                    {emoji} {user['full_name']} <span class="brand-role">{role_label}</span>
+        <div class="brand-block">
+            <div class="brand-logo-sm">📦</div>
+            <div class="brand-text">
+                <div class="brand-text-name">Lab Parfumo</div>
+                <div class="brand-text-tag">PO PRO</div>
+            </div>
+            <div style="flex:1;"></div>
+            <div class="user-pill">
+                <div class="user-avatar">{avatar_letter}</div>
+                <div>
+                    <div class="user-info-name">{user['full_name']}</div>
+                    <div class="user-info-role">{role_label}</div>
                 </div>
             </div>
         </div>
@@ -777,11 +1181,19 @@ def render_alerts():
 # ==================================================================
 
 def render_dashboard():
+    """B2B Dashboard — KPI Hero + Status Grid + Action Items + Insights"""
     user = current_user()
     role = user.get('role', 'requester')
     is_adm = is_admin()
 
-    st.markdown("## 📊 Dashboard")
+    # Page title
+    today_str = date.today().strftime("%a, %d %b %Y")
+    st.markdown(f"""
+    <div class="page-title-block">
+        <div class="page-title-text">ภาพรวมระบบ</div>
+        <div class="page-title-sub">วันนี้ • {today_str}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
     pos = db.get_purchase_orders(user_id=uid(), role=role)
     if not pos:
@@ -797,32 +1209,21 @@ def render_dashboard():
             show_empty_state(
                 "📝",
                 "ยินดีต้อนรับ!",
-                "ยังไม่มี PO — กดปุ่มด้านล่างเพื่อสร้างใบแรก ระบบจะแจ้งแอดมินอัตโนมัติ",
+                "ยังไม่มี PO — กดปุ่มด้านล่างเพื่อสร้างใบแรก",
                 "➕ สร้างใบ PO ใหม่",
                 ('po_create', {'po_items': []}),
             )
         return
 
-    # KPI — คลิกการ์ดเพื่อ filter
     valid = [p for p in pos if p['status'] != 'ยกเลิก']
     pending = [p for p in pos if p['status'] in
                ('รอจัดซื้อดำเนินการ', 'สั่งซื้อแล้ว', 'กำลังขนส่ง')]
-    completed = [p for p in pos if p['status'] in
-                 ('รับของแล้ว', 'เสร็จสมบูรณ์')]
-    issues = [p for p in pos if p['status'] == 'มีปัญหา']
 
-    def goto_po_list(filter_status=None):
-        st.session_state['mode'] = 'po_list'
-        if filter_status:
-            st.session_state['po_list_filter'] = filter_status
-        st.rerun()
-
-    # ===== Quick Stats — Insights แบบเร็ว =====
+    # =============================================================
+    # KPI Hero (admin only)
+    # =============================================================
     if is_adm:
         try:
-            from collections import Counter
-
-            # คำนวณ insights
             now = datetime.now()
             this_month_pos = [p for p in pos
                               if p.get('status') in ('รับของแล้ว', 'เสร็จสมบูรณ์')
@@ -836,22 +1237,12 @@ def render_dashboard():
                               and datetime.fromisoformat(p['received_date'].replace('Z', '+00:00')).replace(tzinfo=None).month == last_month.month
                               and datetime.fromisoformat(p['received_date'].replace('Z', '+00:00')).replace(tzinfo=None).year == last_month.year]
 
-            this_total = sum(p.get('total_amount', 0) or 0 for p in this_month_pos)
-            last_total = sum(p.get('total_amount', 0) or 0 for p in last_month_pos)
+            this_total = sum(p.get('total', 0) or 0 for p in this_month_pos)
+            last_total = sum(p.get('total', 0) or 0 for p in last_month_pos)
             growth = ((this_total - last_total) / last_total * 100) if last_total else 0
-
-            # Top supplier
-            supplier_amounts = {}
-            for p in pos:
-                if p.get('supplier_name') and p.get('total_amount'):
-                    supplier_amounts[p['supplier_name']] = supplier_amounts.get(p['supplier_name'], 0) + p['total_amount']
-            top_supplier = max(supplier_amounts.items(), key=lambda x: x[1]) if supplier_amounts else None
-            total_amount_all = sum(supplier_amounts.values()) or 1
-            top_pct = (top_supplier[1] / total_amount_all * 100) if top_supplier else 0
 
             # PO ค้างนานสุด
             today = datetime.now()
-            longest_pending = None
             longest_days = 0
             for p in pos:
                 if p['status'] in ('รอจัดซื้อดำเนินการ', 'สั่งซื้อแล้ว', 'กำลังขนส่ง'):
@@ -860,270 +1251,204 @@ def render_dashboard():
                         days = (today - created).days
                         if days > longest_days:
                             longest_days = days
-                            longest_pending = p
                     except Exception:
                         pass
 
-            st.markdown("##### 💡 Quick Insights")
-            qc1, qc2, qc3 = st.columns(3)
-            with qc1:
-                arrow = "📈" if growth > 0 else "📉" if growth < 0 else "➡️"
-                color = "#1D9E75" if growth > 0 else "#A32D2D" if growth < 0 else "#888"
-                st.markdown(
-                    f'<div style="background:#F4F6FA; padding:14px 16px; '
-                    f'border-radius:10px; border:1px solid rgba(74,111,165,0.15);">'
-                    f'<div style="font-size:11px; color:#6B7280; '
-                    f'text-transform:uppercase; letter-spacing:0.5px;">'
-                    f'💰 ใช้จ่ายเดือนนี้</div>'
-                    f'<div style="font-size:22px; font-weight:600; color:#4A6FA5; '
-                    f'margin-top:4px;">฿{this_total:,.0f}</div>'
-                    f'<div style="font-size:12px; color:{color}; margin-top:2px;">'
-                    f'{arrow} {abs(growth):.0f}% จากเดือนที่แล้ว</div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-            with qc2:
-                if top_supplier:
-                    name = top_supplier[0]
-                    short_name = name if len(name) <= 20 else name[:18] + "…"
-                    st.markdown(
-                        f'<div style="background:#F4F6FA; padding:14px 16px; '
-                        f'border-radius:10px; border:1px solid rgba(74,111,165,0.15);">'
-                        f'<div style="font-size:11px; color:#6B7280; '
-                        f'text-transform:uppercase; letter-spacing:0.5px;">'
-                        f'🏆 Top Supplier</div>'
-                        f'<div style="font-size:16px; font-weight:600; color:#4A6FA5; '
-                        f'margin-top:4px;" title="{name}">{short_name}</div>'
-                        f'<div style="font-size:12px; color:#6B7280; margin-top:2px;">'
-                        f'{top_pct:.0f}% ของยอด • ฿{top_supplier[1]:,.0f}</div>'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
-                else:
-                    st.markdown(
-                        '<div style="background:#F4F6FA; padding:14px 16px; '
-                        'border-radius:10px; border:1px solid rgba(74,111,165,0.15);">'
-                        '<div style="font-size:11px; color:#6B7280;">🏆 Top Supplier</div>'
-                        '<div style="font-size:14px; color:#9CA3AF; margin-top:8px;">'
-                        'ยังไม่มีข้อมูล</div></div>',
-                        unsafe_allow_html=True,
-                    )
-            with qc3:
-                if longest_pending:
-                    color = "#A32D2D" if longest_days > 14 else "#BA7517" if longest_days > 7 else "#4A6FA5"
-                    st.markdown(
-                        f'<div style="background:#F4F6FA; padding:14px 16px; '
-                        f'border-radius:10px; border:1px solid rgba(74,111,165,0.15);">'
-                        f'<div style="font-size:11px; color:#6B7280; '
-                        f'text-transform:uppercase; letter-spacing:0.5px;">'
-                        f'⏱️ PO ค้างนานสุด</div>'
-                        f'<div style="font-size:22px; font-weight:600; color:{color}; '
-                        f'margin-top:4px;">{longest_days} วัน</div>'
-                        f'<div style="font-size:12px; color:#6B7280; margin-top:2px;">'
-                        f'{longest_pending["po_number"]}</div>'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
-                else:
-                    st.markdown(
-                        '<div style="background:#F4F6FA; padding:14px 16px; '
-                        'border-radius:10px; border:1px solid rgba(74,111,165,0.15);">'
-                        '<div style="font-size:11px; color:#6B7280;">⏱️ PO ค้างนานสุด</div>'
-                        '<div style="font-size:14px; color:#1D9E75; margin-top:8px;">'
-                        '🎉 ไม่มี PO ค้าง</div></div>',
-                        unsafe_allow_html=True,
-                    )
-            st.markdown("<br/>", unsafe_allow_html=True)
+            # New this week
+            week_ago = (today - timedelta(days=7)).isoformat()
+            new_this_week = sum(1 for p in pos if p.get('created_at', '') >= week_ago)
+
+            trend_class = "" if growth >= 0 else "down"
+            trend_arrow = "↑" if growth >= 0 else "↓"
+            stale_count = sum(1 for p in pos
+                              if p['status'] == 'รอจัดซื้อดำเนินการ'
+                              and (today - datetime.fromisoformat(p['created_at'].replace('Z', '+00:00')).replace(tzinfo=None)).days > 3)
+
+            st.markdown(f"""
+            <div class="kpi-hero">
+                <div class="kpi-hero-grid">
+                    <div>
+                        <div class="kpi-label">💰 ใช้จ่ายเดือนนี้</div>
+                        <div class="kpi-value-main">฿{this_total:,.0f}</div>
+                        <span class="kpi-trend {trend_class}">{trend_arrow} {abs(growth):.1f}% จากเดือนก่อน</span>
+                    </div>
+                    <div class="kpi-side">
+                        <div class="kpi-label">PO ทั้งหมด</div>
+                        <div class="kpi-value-side">{len(pos)}</div>
+                        <div class="kpi-meta">+{new_this_week} ใบใหม่สัปดาห์นี้</div>
+                    </div>
+                    <div class="kpi-side">
+                        <div class="kpi-label">รอดำเนินการ</div>
+                        <div class="kpi-value-side">{len(pending)}</div>
+                        <div class="kpi-meta">{stale_count} ใบค้างเกิน 3 วัน</div>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
         except Exception:
             pass
 
-    # CSS ทำให้ปุ่ม KPI ดูเหมือน metric card
-    st.markdown("""
-    <style>
-        .kpi-button button {
-            width: 100% !important;
-            height: 110px !important;
-            padding: 16px 20px !important;
-            text-align: left !important;
-            display: flex !important;
-            flex-direction: column !important;
-            align-items: flex-start !important;
-            justify-content: center !important;
-            background: linear-gradient(135deg, rgba(255,255,255,0.04), transparent) !important;
-            border: 1px solid rgba(74, 111, 165, 0.2) !important;
-            transition: all 0.2s ease !important;
-        }
-        .kpi-button button:hover {
-            border-color: rgba(74, 111, 165, 0.6) !important;
-            background: linear-gradient(135deg, rgba(74, 111, 165, 0.08), transparent) !important;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 16px rgba(74, 111, 165, 0.2) !important;
-        }
-        .kpi-button button p {
-            line-height: 1.3 !important;
-        }
-    </style>
-    """, unsafe_allow_html=True)
+    # =============================================================
+    # Status Grid (7 statuses)
+    # =============================================================
+    status_count = {}
+    for p in pos:
+        status_count[p['status']] = status_count.get(p['status'], 0) + 1
 
-    def kpi_card_label(emoji, title, value, sub=""):
-        """สร้าง label สำหรับปุ่ม KPI"""
-        sub_html = f"\n\n_{sub}_" if sub else ""
-        return f"{emoji} **{title}**\n\n# {value}{sub_html}"
-
-    if is_adm:
-        m1, m2, m3, m4 = st.columns(4)
-        with m1:
-            st.markdown('<div class="kpi-button">', unsafe_allow_html=True)
-            if st.button(kpi_card_label("📝", "PO ทั้งหมด", len(pos)),
-                          key="kpi_all", use_container_width=True):
-                goto_po_list()
-            st.markdown('</div>', unsafe_allow_html=True)
-        with m2:
-            st.markdown('<div class="kpi-button">', unsafe_allow_html=True)
-            if st.button(kpi_card_label("⏳", "กำลังดำเนินการ", len(pending)),
-                          key="kpi_pending", use_container_width=True):
-                goto_po_list("รอจัดซื้อดำเนินการ")
-            st.markdown('</div>', unsafe_allow_html=True)
-        with m3:
-            st.markdown('<div class="kpi-button">', unsafe_allow_html=True)
-            if st.button(kpi_card_label("✅", "เสร็จสิ้น", len(completed)),
-                          key="kpi_done", use_container_width=True):
-                goto_po_list("เสร็จสมบูรณ์")
-            st.markdown('</div>', unsafe_allow_html=True)
-        with m4:
-            total_amt = sum(p.get('total', 0) for p in valid)
-            st.markdown('<div class="kpi-button">', unsafe_allow_html=True)
-            if st.button(kpi_card_label("💰", "ยอดรวม", f"฿{total_amt:,.0f}"),
-                          key="kpi_total", use_container_width=True):
-                st.session_state['mode'] = 'reports'
-                st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
-    else:
-        m1, m2, m3 = st.columns(3)
-        with m1:
-            st.markdown('<div class="kpi-button">', unsafe_allow_html=True)
-            if st.button(kpi_card_label("📝", "PO ของฉัน", len(pos)),
-                          key="kpi_my", use_container_width=True):
-                goto_po_list()
-            st.markdown('</div>', unsafe_allow_html=True)
-        with m2:
-            st.markdown('<div class="kpi-button">', unsafe_allow_html=True)
-            if st.button(kpi_card_label("⏳", "ดำเนินการ", len(pending)),
-                          key="kpi_my_pending", use_container_width=True):
-                goto_po_list("รอจัดซื้อดำเนินการ")
-            st.markdown('</div>', unsafe_allow_html=True)
-        with m3:
-            st.markdown('<div class="kpi-button">', unsafe_allow_html=True)
-            if st.button(kpi_card_label("✅", "เสร็จสิ้น", len(completed)),
-                          key="kpi_my_done", use_container_width=True):
-                goto_po_list("เสร็จสมบูรณ์")
-            st.markdown('</div>', unsafe_allow_html=True)
-
-    # Issue alert — คลิกได้
-    if issues:
-        if st.button(f"⚠️ มี PO ที่มีปัญหา **{len(issues)} ใบ** — คลิกเพื่อตรวจสอบ →",
-                      key="alert_issues", use_container_width=True, type="primary"):
-            goto_po_list("มีปัญหา")
-
-    # Stock low alert (admin only) — คลิกได้
-    if is_adm:
-        low_stock = db.get_low_stock_equipment(threshold=10)
-        if low_stock:
-            names = ", ".join(e['name'] for e in low_stock[:5])
-            if len(low_stock) > 5:
-                names += f" และอีก {len(low_stock) - 5} รายการ"
-            if st.button(f"📉 สต็อกต่ำ **{len(low_stock)} รายการ:** {names} — คลิกเพื่อจัดการ →",
-                          key="alert_stock", use_container_width=True):
-                st.session_state['mode'] = 'equipment'
+    st.markdown('<div class="section-uppercase">📊 ภาพรวมสถานะ</div>',
+                unsafe_allow_html=True)
+    cols = st.columns(len(db.PO_STATUSES))
+    for col, status in zip(cols, db.PO_STATUSES):
+        with col:
+            emoji = STATUS_EMOJI.get(status, '')
+            count = status_count.get(status, 0)
+            short_status = status if len(status) <= 10 else status[:9] + "…"
+            warn_cls = "warn" if status == "รอจัดซื้อดำเนินการ" and count > 0 else ""
+            # Use clickable button styled as card
+            if st.button(
+                f"{emoji}\n\n# {count}\n\n{short_status}",
+                key=f"status_card_{status}",
+                use_container_width=True,
+                help=f"ดู PO สถานะ '{status}'",
+            ):
+                st.session_state['mode'] = 'po_list'
+                st.session_state['po_list_filter'] = status
                 st.rerun()
 
-    st.divider()
+    st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 
-    # งานที่ต้องทำ
+    # =============================================================
+    # Two columns: Action Items + Insights
+    # =============================================================
     today = date.today()
     if is_adm:
         action = [p for p in pos if p['status'] in
                   ('รอจัดซื้อดำเนินการ', 'มีปัญหา')]
-        # เพิ่มที่เลยกำหนด
         action += [p for p in pos
                    if p.get('expected_date') and p['expected_date'] < today.isoformat()
                    and p['status'] in ('สั่งซื้อแล้ว', 'กำลังขนส่ง')]
     else:
         action = [p for p in pos if p['status'] in
                   ('รับของแล้ว', 'มีปัญหา')]
-        # เพิ่มที่ใกล้ครบกำหนด
         action += [p for p in pos
                    if p.get('expected_date')
                    and today.isoformat() <= p['expected_date']
                    <= (today + timedelta(days=3)).isoformat()
                    and p['status'] in ('สั่งซื้อแล้ว', 'กำลังขนส่ง')]
-
     seen = set()
     action = [p for p in action if not (p['id'] in seen or seen.add(p['id']))]
 
-    st.markdown("### 🔔 ที่ต้องดำเนินการ")
-    if not action:
-        st.success("🎉 ไม่มีงานค้าง")
+    if is_adm:
+        col_left, col_right = st.columns([3, 2])
     else:
-        for po in action[:5]:
-            with st.container(border=True):
-                c1, c2, c3, c4 = st.columns([2, 3, 2, 1])
-                with c1:
-                    st.markdown(f"**{po['po_number']}**")
-                    show_status_badge(po['status'])
-                with c2:
-                    st.caption(f"📦 {len(po.get('items', []))} รายการ")
-                    if po.get('supplier_name'):
-                        st.caption(f"🏭 {po['supplier_name'][:60]}")
-                with c3:
-                    if po.get('expected_date'):
-                        days = days_until(po['expected_date'])
-                        if days is not None:
-                            if days < 0:
-                                st.markdown(
-                                    f"<span style='color:#A32D2D;'>🚨 เลย {-days} วัน</span>",
-                                    unsafe_allow_html=True,
-                                )
-                            elif days == 0:
-                                st.caption("📅 วันนี้")
-                            else:
-                                st.caption(f"📅 อีก {days} วัน")
-                    if is_adm and po.get('total'):
-                        st.caption(f"💰 ฿{po['total']:,.2f}")
-                with c4:
-                    if st.button("ดู →", key=f"act_{po['id']}",
-                                 use_container_width=True):
+        col_left, col_right = st.columns([1, 0.001])
+
+    # ===== LEFT: Action Items =====
+    with col_left:
+        with st.container(border=True):
+            st.markdown(f"""
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+                <div style="font-size:13px; font-weight:700; color:var(--slate-900);
+                            text-transform:uppercase; letter-spacing:0.6px;">
+                    ⚡ ที่ต้องดำเนินการ
+                    <span style="background:#DC2626; color:white; font-size:11px;
+                                  padding:2px 8px; border-radius:10px; margin-left:6px;">
+                        {len(action)}
+                    </span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            if not action:
+                st.markdown("""
+                <div style="padding:24px; text-align:center; color:var(--slate-400);
+                            font-size:13px;">
+                    🎉 ไม่มีงานค้าง — ทำดีมาก!
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                for po in action[:5]:
+                    icon_cls = "danger" if po['status'] == 'มีปัญหา' else "warn"
+                    icon = "⚠️" if po['status'] == 'มีปัญหา' else "⏰"
+                    n_items = len(po.get('items', []))
+                    creator = po.get('created_by_name') or "—"
+                    try:
+                        created = datetime.fromisoformat(po['created_at'].replace('Z', '+00:00')).replace(tzinfo=None)
+                        days_ago = (datetime.now() - created).days
+                        time_label = "วันนี้" if days_ago == 0 else (f"{days_ago} วันที่แล้ว" if days_ago < 7 else f"{days_ago} วัน")
+                    except Exception:
+                        time_label = ""
+
+                    st.markdown(f"""
+                    <div class="action-row">
+                        <div class="action-icon {icon_cls}">{icon}</div>
+                        <div class="action-content">
+                            <div class="action-title-text">{po['po_number']} — {po['status']}</div>
+                            <div class="action-meta-text">{creator} • {n_items} รายการ</div>
+                        </div>
+                        <div class="action-time-text">{time_label}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    if st.button(f"ดู {po['po_number']} →",
+                                  key=f"act_btn_{po['id']}",
+                                  use_container_width=True):
                         st.session_state['view_po_id'] = po['id']
                         st.session_state['mode'] = 'po_view'
                         st.rerun()
 
-    st.divider()
+    # ===== RIGHT: Insights (admin only) =====
+    if is_adm:
+        with col_right:
+            try:
+                # Top supplier
+                supplier_amounts = {}
+                for p in pos:
+                    if p.get('supplier_name') and p.get('total'):
+                        supplier_amounts[p['supplier_name']] = supplier_amounts.get(p['supplier_name'], 0) + p['total']
+                top_supplier = max(supplier_amounts.items(), key=lambda x: x[1]) if supplier_amounts else None
+                total_amount_all = sum(supplier_amounts.values()) or 1
+                top_pct = (top_supplier[1] / total_amount_all * 100) if top_supplier else 0
 
-    # ภาพรวมสถานะ — คลิกการ์ดเพื่อ filter ดูในรายการ
-    st.markdown("### 📊 ภาพรวมสถานะ")
-    st.caption("คลิกที่สถานะเพื่อดูรายการ PO")
+                if top_supplier:
+                    name = top_supplier[0]
+                    short_name = name if len(name) <= 24 else name[:23] + "…"
+                    st.markdown(f"""
+                    <div class="insight-card">
+                        <div class="insight-label">🏆 Top Supplier เดือนนี้</div>
+                        <div class="insight-value">{short_name}</div>
+                        <div class="insight-meta">฿{top_supplier[1]:,.0f} • {top_pct:.0f}% ของยอดรวม</div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
-    status_count = {}
-    for p in pos:
-        status_count[p['status']] = status_count.get(p['status'], 0) + 1
+                # Longest pending
+                if longest_days > 0:
+                    color = "var(--danger)" if longest_days > 14 else ("var(--warning)" if longest_days > 7 else "var(--brand-700)")
+                    st.markdown(f"""
+                    <div class="insight-card">
+                        <div class="insight-label">⏱️ PO ค้างนานสุด</div>
+                        <div class="insight-value" style="color:{color};">{longest_days} วัน</div>
+                        <div class="insight-meta">รอดำเนินการ</div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
-    # ใช้ CSS เดียวกับ KPI cards
-    cols = st.columns(len(db.PO_STATUSES))
-    for col, status in zip(cols, db.PO_STATUSES):
-        with col:
-            emoji = STATUS_EMOJI.get(status, '')
-            count = status_count.get(status, 0)
-            # ตัดชื่อสถานะให้สั้นถ้ายาว
-            short_status = status if len(status) <= 12 else status[:11] + "…"
-            st.markdown('<div class="kpi-button">', unsafe_allow_html=True)
-            if st.button(
-                f"{emoji} **{short_status}**\n\n# {count}",
-                key=f"status_card_{status}",
-                use_container_width=True,
-                help=f"คลิกเพื่อดู PO สถานะ '{status}'",
-            ):
-                goto_po_list(status)
-            st.markdown('</div>', unsafe_allow_html=True)
+                # Low stock
+                eq_list = db.get_equipment_list()
+                low_stock = [e for e in eq_list
+                              if (e.get('stock', 0) or 0) <= 5
+                              and (e.get('stock', 0) or 0) > 0]
+                out_stock = [e for e in eq_list if (e.get('stock', 0) or 0) == 0]
+                low_total = len(low_stock) + len(out_stock)
+                if low_total > 0:
+                    examples = ", ".join((e['name'][:20] for e in (low_stock + out_stock)[:3]))
+                    st.markdown(f"""
+                    <div class="insight-card">
+                        <div class="insight-label">📦 สินค้าใกล้หมด/หมด</div>
+                        <div class="insight-value">{low_total} รายการ</div>
+                        <div class="insight-meta">{examples}…</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            except Exception:
+                pass
 
 
 # ==================================================================

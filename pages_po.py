@@ -19,10 +19,15 @@ def render_pending_receipt():
     """หน้า PO ที่รอรับของ — staff ทุกคนเห็น"""
     user = current_user()
 
-    st.markdown("## 📦 รอรับของ")
-    st.caption("PO ที่ supplier สั่งแล้ว / กำลังขนส่ง — กรุณาตรวจรับเมื่อของมาถึง")
-
     pos = db.get_pos_pending_receipt()
+
+    st.markdown(f"""
+    <div class="page-title-block">
+        <div class="page-title-text">รอรับของ</div>
+        <div class="page-title-sub">{len(pos)} ใบที่กำลังจะมาถึง • ตรวจรับเมื่อของถึง</div>
+    </div>
+    """, unsafe_allow_html=True)
+
     if not pos:
         show_empty_state(
             "🎉",
@@ -205,14 +210,25 @@ def render_po_list():
     user = current_user()
     role = user.get('role', '')
 
-    st.markdown("## 📝 ใบสั่งซื้อ")
-
-    if st.button("➕ สร้างใบ PO ใหม่", type="primary"):
-        st.session_state['mode'] = 'po_create'
-        st.session_state['po_items'] = []
-        st.rerun()
-
     pos = db.get_purchase_orders(user_id=uid(), role=role)
+
+    # Page title row
+    last_update_str = "อัปเดตล่าสุด เพิ่งอัปเดต"
+    title_col, btn_col = st.columns([5, 1])
+    with title_col:
+        st.markdown(f"""
+        <div class="page-title-block">
+            <div class="page-title-text">ใบสั่งซื้อทั้งหมด</div>
+            <div class="page-title-sub">{len(pos)} ใบ • {last_update_str}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with btn_col:
+        if st.button("➕ สร้างใหม่", type="primary", use_container_width=True,
+                     key="po_list_create"):
+            st.session_state['mode'] = 'po_create'
+            st.session_state['po_items'] = []
+            st.rerun()
+
     if not pos:
         show_empty_state(
             "📋",
@@ -223,78 +239,116 @@ def render_po_list():
         )
         return
 
-    # Filter
-    col1, col2, col3 = st.columns([1.5, 1.5, 2])
-    with col1:
-        statuses = ["ทั้งหมด"] + db.PO_STATUSES
-        # ใช้ filter ที่มาจาก dashboard
-        preset_filter = st.session_state.pop('po_list_filter', None)
-        default_idx = 0
-        if preset_filter and preset_filter in statuses:
-            default_idx = statuses.index(preset_filter)
-        f_status = st.selectbox("สถานะ", statuses, index=default_idx)
-    with col2:
-        if is_admin():
-            sups = ["ทั้งหมด"] + db.get_unique_suppliers()
-            f_supp = st.selectbox("Supplier", sups)
-        else:
-            f_supp = "ทั้งหมด"
-    with col3:
-        search = st.text_input("🔍 ค้นหา", placeholder="เลข PO / supplier / สินค้า")
+    # ===== Filter chips (status counts) =====
+    status_count = {}
+    for p in pos:
+        status_count[p['status']] = status_count.get(p['status'], 0) + 1
 
+    preset_filter = st.session_state.pop('po_list_filter', None)
+    if 'po_list_active_filter' not in st.session_state:
+        st.session_state['po_list_active_filter'] = preset_filter or "ทั้งหมด"
+    elif preset_filter:
+        st.session_state['po_list_active_filter'] = preset_filter
+
+    active = st.session_state['po_list_active_filter']
+
+    # Search box on top
+    search = st.text_input("🔍 ค้นหา", placeholder="เลข PO / supplier / สินค้า / ผู้สร้าง...",
+                           key="po_search", label_visibility="collapsed")
+
+    # Filter chips row
+    chip_options = [("ทั้งหมด", len(pos))] + [
+        (s, status_count.get(s, 0))
+        for s in db.PO_STATUSES
+        if status_count.get(s, 0) > 0
+    ]
+
+    chip_cols = st.columns(min(len(chip_options), 7))
+    for i, (s, cnt) in enumerate(chip_options[:7]):
+        with chip_cols[i]:
+            label = f"{s} • {cnt}"
+            if st.button(
+                label,
+                key=f"chip_{s}",
+                type="primary" if active == s else "secondary",
+                use_container_width=True,
+            ):
+                st.session_state['po_list_active_filter'] = s
+                st.rerun()
+
+    # ===== Apply filter =====
     filtered = pos[:]
-    if f_status != "ทั้งหมด":
-        filtered = [p for p in filtered if p['status'] == f_status]
-    if f_supp != "ทั้งหมด":
-        filtered = [p for p in filtered if p.get('supplier_name') == f_supp]
+    if active != "ทั้งหมด":
+        filtered = [p for p in filtered if p['status'] == active]
     if search:
         s = search.lower()
         filtered = [p for p in filtered
                     if s in p.get('po_number', '').lower()
                     or s in (p.get('notes') or '').lower()
                     or s in (p.get('supplier_name') or '').lower()
+                    or s in (p.get('created_by_name') or '').lower()
                     or any(s in (it.get('name') or '').lower()
                             for it in (p.get('items') or []))]
 
     st.caption(f"พบ {len(filtered)} ใบ")
 
+    # ===== Compact PO rows =====
     for po in filtered:
+        n_items = len(po.get('items', []))
+        items_preview = ", ".join(
+            (i.get('name', '') for i in po.get('items', [])[:2])
+        )
+        if n_items > 2:
+            items_preview += f", +{n_items - 2}"
+
+        # Build supplier or "(ยังไม่ระบุ)"
+        if is_admin():
+            sup = po.get('supplier_name') or '(ยังไม่ระบุ supplier)'
+        else:
+            sup = po.get('supplier_name') or '—'
+
+        amt_str = f"฿{po['total']:,.0f}" if (is_admin() and po.get('total')) else "—"
+        date_str = fmt_date(po.get('created_at'))[5:].replace('-', '/') if po.get('created_at') else ""
+        creator = po.get('created_by_name', '—')
+
+        # Container with compact grid
         with st.container(border=True):
-            c1, c2, c3, c4 = st.columns([2, 3, 2, 1])
-
+            c1, c2, c3, c4, c5, c6 = st.columns([1.4, 3, 1.6, 1, 1.3, 0.8])
             with c1:
-                st.markdown(f"**{po['po_number']}**")
-                show_status_badge(po['status'])
-                st.caption(f"📅 {fmt_date(po.get('created_at'))}")
-
-            with c2:
-                if is_admin():
-                    sn = po.get('supplier_name') or '(ยังไม่ระบุ supplier)'
-                    st.write(f"🏭 **{sn}**")
-                items_str = ", ".join(
-                    f"{i.get('name', '')} × {i.get('qty', 0):,.0f}"
-                    for i in po.get('items', [])[:2]
+                st.markdown(
+                    f"<div class='po-num'>{po['po_number']}</div>",
+                    unsafe_allow_html=True,
                 )
-                if len(po.get('items', [])) > 2:
-                    items_str += f", +{len(po['items']) - 2}"
-                st.caption(f"📦 {items_str}")
-                if is_admin():
-                    st.caption(f"👤 ผู้สั่ง: {po.get('created_by_name', '-')}")
-
+            with c2:
+                st.markdown(
+                    f"<div style='font-size:13px; font-weight:600; color:var(--slate-800);'>{sup}</div>"
+                    f"<div style='font-size:11px; color:var(--slate-500);'>📦 {n_items} รายการ • {items_preview}</div>",
+                    unsafe_allow_html=True,
+                )
             with c3:
-                if is_admin() and po.get('total'):
-                    st.markdown(f"💰 **฿{po['total']:,.2f}**")
-                di = days_indicator(po.get('expected_date'), po['status'])
-                if di:
-                    st.markdown(di, unsafe_allow_html=True)
-                if po.get('received_date'):
-                    st.caption(f"✅ รับ: {fmt_date(po['received_date'])}")
-
+                show_status_pill(po['status'])
             with c4:
-                if st.button("👁️", key=f"v_{po['id']}", use_container_width=True):
+                amt_color = "var(--slate-900)" if amt_str != "—" else "var(--slate-400)"
+                st.markdown(
+                    f"<div style='text-align:right; font-weight:700; color:{amt_color}; "
+                    f"font-variant-numeric:tabular-nums;'>{amt_str}</div>",
+                    unsafe_allow_html=True,
+                )
+            with c5:
+                st.markdown(
+                    f"<div style='font-size:11px; color:var(--slate-500);'>📅 {date_str}</div>"
+                    f"<div style='font-size:11px; color:var(--slate-500);'>👤 {creator}</div>",
+                    unsafe_allow_html=True,
+                )
+            with c6:
+                if st.button("ดู →", key=f"v_{po['id']}",
+                              use_container_width=True):
                     st.session_state['view_po_id'] = po['id']
                     st.session_state['mode'] = 'po_view'
                     st.rerun()
+
+
+
 
 
 # ==================================================================
@@ -309,38 +363,62 @@ def render_po_create():
     if not st.session_state.get(draft_loaded_key):
         draft = db.get_po_draft(uid())
         if draft and draft.get('items'):
-            # โหลด draft → set ใน session
             st.session_state['po_items'] = draft['items']
             if draft.get('notes'):
-                # ใช้ internal key (ไม่ตรงกับ widget key)
                 st.session_state['_po_notes_value'] = draft['notes']
         st.session_state[draft_loaded_key] = True
 
-    st.markdown("## ➕ สร้างใบสั่งซื้อใหม่")
-    st.caption("กรอกความต้องการ — แอดมินจะเป็นคนติดต่อ supplier")
+    # ===== Breadcrumb + Header =====
+    st.markdown("""
+    <div style="color:var(--slate-500); font-size:12px; margin-bottom:10px;">
+        <span style="color:var(--brand-700); cursor:pointer;">ใบ PO</span>
+        <span style="margin:0 6px;">›</span>
+        <span>สร้างใหม่</span>
+    </div>
+    """, unsafe_allow_html=True)
 
-    # แจ้งว่ามี draft กำลังเปิดอยู่
+    title_col, save_col = st.columns([5, 2])
+    with title_col:
+        st.markdown("""
+        <div class="page-title-block">
+            <div class="page-title-text">สร้างใบสั่งซื้อใหม่</div>
+            <div class="page-title-sub">เลือกสินค้าจาก catalog หรือพิมพ์ชื่อเอง</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with save_col:
+        if st.session_state.get('po_items'):
+            now_str = datetime.now().strftime('%H:%M')
+            st.markdown(f"""
+            <div style="text-align:right; font-size:12px; color:var(--success);
+                        font-weight:600; padding-top:14px;">
+                💾 บันทึกร่างอัตโนมัติ • {now_str}
+            </div>
+            """, unsafe_allow_html=True)
+
+    # Action row: clear + back
     if st.session_state.get('po_items'):
-        c1, c2 = st.columns([5, 1])
+        c1, c2, c3 = st.columns([4, 1, 1])
         with c1:
-            st.info(f"💾 **กำลังร่าง:** มี {len(st.session_state['po_items'])} รายการ "
-                     f"— บันทึกอัตโนมัติเมื่อกด เพิ่ม/ลบ/แก้ไขจำนวน")
+            st.markdown("")
         with c2:
-            if st.button("🗑️ ล้าง", help="ลบ draft + เริ่มใหม่",
-                          use_container_width=True):
+            if st.button("🗑️ ล้าง", use_container_width=True,
+                          key="po_create_clear"):
                 db.delete_po_draft(uid())
                 st.session_state['po_items'] = []
                 st.session_state['_po_notes_value'] = ''
-                # reset draft_loaded เพื่อให้โหลดใหม่ครั้งต่อไป
                 st.session_state.pop(draft_loaded_key, None)
-                # ลบ widget state
                 st.session_state.pop('po_create_notes', None)
                 st.success("ล้างแล้ว")
                 st.rerun()
-
-    if st.button("← กลับ"):
-        st.session_state['mode'] = 'po_list'
-        st.rerun()
+        with c3:
+            if st.button("← กลับ", use_container_width=True,
+                          key="po_create_back"):
+                st.session_state['mode'] = 'po_list'
+                st.rerun()
+    else:
+        if st.button("← กลับ", key="po_create_back2"):
+            st.session_state['mode'] = 'po_list'
+            st.rerun()
 
     eq_list = db.get_equipment_list(active_only=True)
 
@@ -507,12 +585,7 @@ def _stock_indicator(stock):
 
 
 def _render_eq_card(eq, is_selected):
-    """แสดงการ์ดอุปกรณ์ + ปุ่มเพิ่ม/ลบ — square images + uniform height"""
-    border_color = "#4A6FA5" if is_selected else "#444"
-    border_width = "2px" if is_selected else "1px"
-    bg = "#2a2520" if is_selected else "#252525"
-
-    # รวมรูปทั้งหมด
+    """Catalog product card — B2B clean style"""
     images = list(eq.get('image_urls') or [])
     if eq.get('image_url') and eq['image_url'] not in images:
         images.insert(0, eq['image_url'])
@@ -521,118 +594,73 @@ def _render_eq_card(eq, is_selected):
     sku = eq.get('sku') or '-'
     unit = eq.get('unit', 'ชิ้น')
     cat = eq.get('category', '-')
-    desc = (eq.get('description') or '').strip()
-    stock = eq.get('stock', 0)
-    stock_emoji, stock_color, stock_label = _stock_indicator(stock)
+    stock = eq.get('stock', 0) or 0
 
-    # Card container
-    with st.container(border=False):
-        st.markdown(
-            f'<div style="border:{border_width} solid {border_color}; '
-            f'background:{bg}; border-radius:10px; padding:12px; '
-            f'margin-bottom:10px;">',
-            unsafe_allow_html=True,
-        )
+    # Stock chip
+    if stock == 0:
+        chip_bg, chip_color, chip_border = "var(--danger-soft)", "var(--danger)", "rgba(220, 38, 38, 0.2)"
+        chip_text = f"⚠️ หมด"
+    elif stock < 10:
+        chip_bg, chip_color, chip_border = "var(--warning-soft)", "var(--warning)", "rgba(217, 119, 6, 0.2)"
+        chip_text = f"⚠️ {stock} {unit} (ต่ำ)"
+    else:
+        chip_bg, chip_color, chip_border = "var(--success-soft)", "var(--success)", "rgba(5, 150, 105, 0.2)"
+        chip_text = f"📦 {stock} {unit}"
 
-        # ===== รูปหลัก — square 1:1 =====
+    with st.container(border=True):
+        # ===== Image (small thumb เพื่อ compact) =====
         if images:
             primary = images[0]
             st.markdown(
                 f'<div style="width:100%; aspect-ratio:1/1; '
-                f'background:#1a1a1a; border-radius:8px; overflow:hidden; '
+                f'background:var(--slate-100); border-radius:8px; overflow:hidden; '
                 f'display:flex; align-items:center; justify-content:center; '
-                f'margin-bottom:6px;">'
+                f'border:1px solid var(--slate-200);">'
                 f'<img src="{primary}" '
-                f'style="width:100%; height:100%; object-fit:cover; '
-                f'display:block;" '
+                f'style="width:100%; height:100%; object-fit:cover; display:block;" '
                 f'onerror="this.style.display=\'none\'; '
-                f'this.parentElement.innerHTML=\'<span style=&quot;font-size:48px&quot;>🧴</span>\';"/>'
+                f'this.parentElement.innerHTML=\'<span style=&quot;font-size:42px&quot;>🧴</span>\';"/>'
                 f'</div>',
                 unsafe_allow_html=True,
             )
         else:
             st.markdown(
                 '<div style="width:100%; aspect-ratio:1/1; '
-                'background:#1a1a1a; border-radius:8px; '
+                'background:var(--slate-100); border-radius:8px; '
                 'display:flex; align-items:center; justify-content:center; '
-                'font-size:56px; margin-bottom:6px;">🧴</div>',
+                'font-size:50px; border:1px solid var(--slate-200);">🧴</div>',
                 unsafe_allow_html=True,
             )
 
-        # ===== Thumbnails — แสดง 4 ช่องเสมอ =====
-        if len(images) > 1 or True:  # always show row to keep height equal
-            tc = st.columns(4)
-            for i in range(4):
-                with tc[i]:
-                    idx = i + 1  # รูปที่ 2-5
-                    if idx < len(images):
-                        url = images[idx]
-                        st.markdown(
-                            f'<div style="width:100%; aspect-ratio:1/1; '
-                            f'background:#1a1a1a; border-radius:4px; '
-                            f'overflow:hidden;">'
-                            f'<img src="{url}" '
-                            f'style="width:100%; height:100%; '
-                            f'object-fit:cover; display:block;"/>'
-                            f'</div>',
-                            unsafe_allow_html=True,
-                        )
-                    else:
-                        # placeholder
-                        st.markdown(
-                            '<div style="width:100%; aspect-ratio:1/1; '
-                            'background:rgba(255,255,255,0.02); '
-                            'border:1px dashed rgba(200,164,126,0.1); '
-                            'border-radius:4px;"></div>',
-                            unsafe_allow_html=True,
-                        )
-
-        # ===== ชื่อสินค้า — font ใหญ่ขึ้น 15px =====
+        # ===== Name =====
         st.markdown(
-            f'<div style="font-size:15px; font-weight:500; '
-            f'margin-top:8px; line-height:1.3; '
-            f'white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" '
-            f'title="{name}">{name}</div>',
+            f'<div style="font-weight:600; font-size:13px; color:var(--slate-900); '
+            f'margin-top:8px; white-space:nowrap; overflow:hidden; '
+            f'text-overflow:ellipsis;" title="{name}">{name}</div>',
             unsafe_allow_html=True,
         )
 
-        # ===== SKU + หน่วย =====
+        # ===== SKU + Cat =====
         st.markdown(
-            f'<div style="font-size:12px; color:#888; '
-            f'margin-top:2px;">SKU: {sku}  |  📐 {unit}</div>'
-            f'<div style="font-size:12px; color:#888; '
-            f'margin-top:2px;">📂 {cat}</div>',
+            f'<div style="font-size:11px; color:var(--slate-500); '
+            f'margin-top:2px;">SKU: {sku}</div>'
+            f'<div style="font-size:11px; color:var(--slate-500);">📂 {cat}</div>',
             unsafe_allow_html=True,
         )
 
-        # ===== คำอธิบาย — บังคับ 2 บรรทัด =====
+        # ===== Stock chip =====
         st.markdown(
-            f'<div style="font-size:12px; color:#aaa; '
-            f'min-height:34px; max-height:34px; overflow:hidden; '
-            f'display:-webkit-box; -webkit-line-clamp:2; '
-            f'-webkit-box-orient:vertical; '
-            f'margin:6px 0;">'
-            f'{desc if desc else "&nbsp;"}'
-            f'</div>',
+            f'<div style="margin:8px 0;">'
+            f'<span style="background:{chip_bg}; color:{chip_color}; '
+            f'border:1px solid {chip_border}; padding:3px 10px; '
+            f'border-radius:10px; font-size:11px; font-weight:600;">'
+            f'{chip_text}</span></div>',
             unsafe_allow_html=True,
         )
 
-        # ===== Stock indicator =====
-        st.markdown(
-            f'<div style="display:flex; justify-content:space-between; '
-            f'align-items:center; margin-top:6px; padding-top:8px; '
-            f'border-top:1px solid #333; font-size:13px; '
-            f'color:{stock_color}; font-weight:500;">'
-            f'<span>{stock_emoji} {stock_label}</span>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        # ===== ปุ่ม เพิ่ม/ลบ — font ใหญ่ขึ้น =====
+        # ===== Add/Remove button =====
         if is_selected:
-            if st.button("✓ เลือกแล้ว — กดเพื่อลบ", key=f"card_{eq['id']}",
+            if st.button("✓ เลือกแล้ว", key=f"card_{eq['id']}",
                          use_container_width=True, type="primary"):
                 st.session_state['po_items'] = [
                     it for it in st.session_state['po_items']
@@ -642,7 +670,7 @@ def _render_eq_card(eq, is_selected):
                                    st.session_state.get('_po_notes_value', ''))
                 st.rerun()
         else:
-            if st.button("➕ เพิ่ม", key=f"card_{eq['id']}",
+            if st.button("+ เพิ่ม", key=f"card_{eq['id']}",
                          use_container_width=True):
                 st.session_state['po_items'].append({
                     'equipment_id': eq['id'],
@@ -780,18 +808,40 @@ def render_po_view():
             st.rerun()
         return
 
-    # ----- Header -----
-    col1, col2 = st.columns([4, 1])
+    # ===== Breadcrumb + Header =====
+    st.markdown(f"""
+    <div style="color:var(--slate-500); font-size:12px; margin-bottom:10px;">
+        <span style="color:var(--brand-700); cursor:pointer;">← ใบ PO</span>
+        <span style="margin:0 6px;">›</span>
+        <span>{po['po_number']}</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col1, col2 = st.columns([5, 1])
     with col1:
-        st.markdown(f"## 📄 {po['po_number']}")
-        show_status_badge(po['status'])
+        # Build header with status pill
+        from helpers import status_pill_html
+        sup_text = po.get('supplier_name') or '(ยังไม่ระบุ supplier)'
+        n_items = len(po.get('items') or [])
+        creator = po.get('created_by_name', '—')
+        date_str = fmt_date(po.get('created_at'))
+
+        st.markdown(f"""
+        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+            <h1 style="margin:0;">{po['po_number']}</h1>
+            {status_pill_html(po['status'])}
+        </div>
+        <div style="color:var(--slate-500); font-size:13px; margin-top:4px;">
+            {sup_text} • {n_items} รายการ • สร้างโดย {creator} เมื่อ {date_str}
+        </div>
+        """, unsafe_allow_html=True)
     with col2:
-        if st.button("← กลับ", use_container_width=True):
+        if st.button("← กลับ", use_container_width=True, key="po_view_back"):
             st.session_state['mode'] = 'po_list'
             st.session_state['action_form'] = None
             st.rerun()
 
-    # Progress bar
+    # Progress bar (workflow timeline)
     render_progress_bar(po['status'])
 
     # คำเตือน
@@ -1153,24 +1203,31 @@ def _render_item_row(item, idx, eq_map, po_id):
 
 
 def render_progress_bar(current_status):
-    """visual workflow — ปรับให้ดูเป็น flow chart ที่อ่านง่าย"""
+    """B2B Workflow Timeline — circular dots + connecting lines"""
     main_steps = [
-        ("รอจัดซื้อ", "รอจัดซื้อดำเนินการ"),
-        ("สั่งแล้ว", "สั่งซื้อแล้ว"),
+        ("สร้าง PO", "รอจัดซื้อดำเนินการ"),
+        ("สั่งซื้อ", "สั่งซื้อแล้ว"),
         ("ขนส่ง", "กำลังขนส่ง"),
         ("รับของ", "รับของแล้ว"),
-        ("เสร็จ", "เสร็จสมบูรณ์"),
+        ("เสร็จสมบูรณ์", "เสร็จสมบูรณ์"),
     ]
 
-    if current_status in ('ยกเลิก', 'มีปัญหา'):
-        from helpers import STATUS_COLOR, STATUS_EMOJI
-        c = STATUS_COLOR.get(current_status, '#A32D2D')
-        e = STATUS_EMOJI.get(current_status, '⚠️')
+    if current_status == 'ยกเลิก':
         st.markdown(
-            f'<div style="padding:14px 18px; background:{c}15; '
-            f'border-left:4px solid {c}; border-radius:8px; margin:12px 0; '
-            f'font-size:14px; color:{c};">'
-            f'<b>{e} สถานะ: {current_status}</b></div>',
+            '<div style="padding:14px 18px; background:var(--slate-100); '
+            'border-left:4px solid var(--slate-400); border-radius:8px; margin:12px 0; '
+            'font-size:14px; color:var(--slate-600);">'
+            '<b>❌ ยกเลิก</b></div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    if current_status == 'มีปัญหา':
+        st.markdown(
+            '<div style="padding:14px 18px; background:var(--danger-soft); '
+            'border-left:4px solid var(--danger); border-radius:8px; margin:12px 0; '
+            'font-size:14px; color:var(--danger);">'
+            '<b>⚠️ มีปัญหา — กำลังตรวจสอบ</b></div>',
             unsafe_allow_html=True,
         )
         return
@@ -1180,31 +1237,23 @@ def render_progress_bar(current_status):
     except StopIteration:
         cur_idx = 0
 
-    # สร้าง progress bar ด้วย HTML เดียว (ไม่ใช้ st.columns) — ป้องกันซ้อนกับปุ่ม
-    html = '<div style="display:flex; gap:6px; margin:12px 0 8px; padding:4px;">'
+    # Build B2B timeline
+    html = '<div class="workflow">'
     for i, (label, status) in enumerate(main_steps):
         if i < cur_idx:
-            # ทำเสร็จแล้ว — เขียวเข้ม
-            bg, color, prefix = "#D1FAE5", "#065F46", "✓"
-            border = "1px solid #A7F3D0"
+            cls = "done"
+            inner = "✓"
         elif i == cur_idx:
-            # กำลังทำ — น้ำเงินเข้ม
-            from helpers import STATUS_COLOR, STATUS_EMOJI
-            color = STATUS_COLOR.get(status, '#4A6FA5')
-            bg = color + "1A"
-            prefix = STATUS_EMOJI.get(status, '●')
-            border = f"2px solid {color}"
+            cls = "active"
+            inner = str(i + 1)
         else:
-            # ยังไม่ถึง — เทา
-            bg, color, prefix = "#F3F4F6", "#9CA3AF", "○"
-            border = "1px solid #E5E7EB"
-
+            cls = ""
+            inner = str(i + 1)
         html += (
-            f'<div style="flex:1; text-align:center; padding:10px 8px; '
-            f'background:{bg}; border:{border}; border-radius:8px; '
-            f'font-size:12px; color:{color}; font-weight:500;">'
-            f'<div style="font-size:14px; margin-bottom:2px;">{prefix}</div>'
-            f'{label}</div>'
+            f'<div class="workflow-step {cls}">'
+            f'<div class="workflow-dot">{inner}</div>'
+            f'<div class="workflow-label">{label}</div>'
+            f'</div>'
         )
     html += '</div>'
     st.markdown(html, unsafe_allow_html=True)
@@ -1355,9 +1404,26 @@ def render_actions(po):
 
 
 def render_order_form(po):
-    """แอดมิน: สั่งซื้อกับ supplier"""
+    """แอดมิน: สั่งซื้อกับ supplier — B2B styled"""
+    st.markdown(f"""
+    <div style="background:linear-gradient(135deg, var(--brand-700), var(--brand-900));
+                color:white; padding:14px 20px; border-radius:10px;
+                margin:8px 0 14px; display:flex; align-items:center; gap:12px;">
+        <div style="width:40px; height:40px; background:rgba(255,255,255,0.15);
+                    border-radius:10px; display:flex; align-items:center;
+                    justify-content:center; font-size:20px;">🛒</div>
+        <div>
+            <div style="font-size:15px; font-weight:700;">
+                สั่งซื้อกับ Supplier — {po['po_number']}
+            </div>
+            <div style="font-size:11px; opacity:0.85;">
+                กรอกข้อมูล supplier + ราคาแต่ละรายการ + วันที่คาดได้รับ
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
     with st.form("order_form"):
-        st.markdown("#### 🛒 ยืนยันสั่งซื้อกับ Supplier")
         col1, col2 = st.columns(2)
         with col1:
             supplier_name = st.text_input("ชื่อ Supplier *",
@@ -1482,9 +1548,26 @@ def render_order_form(po):
 
 
 def render_ship_form(po):
-    """แอดมิน: อัปเดตขนส่ง"""
+    """แอดมิน: อัปเดตขนส่ง — B2B styled"""
+    st.markdown(f"""
+    <div style="background:linear-gradient(135deg, var(--brand-700), var(--brand-900));
+                color:white; padding:14px 20px; border-radius:10px;
+                margin:8px 0 14px; display:flex; align-items:center; gap:12px;">
+        <div style="width:40px; height:40px; background:rgba(255,255,255,0.15);
+                    border-radius:10px; display:flex; align-items:center;
+                    justify-content:center; font-size:20px;">🚚</div>
+        <div>
+            <div style="font-size:15px; font-weight:700;">
+                อัปเดตขนส่ง — {po['po_number']}
+            </div>
+            <div style="font-size:11px; opacity:0.85;">
+                ใส่เลข Tracking + บริษัทขนส่ง • ผู้สร้าง PO จะได้รับแจ้งเตือน
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
     with st.form("ship_form"):
-        st.markdown("#### 🚚 อัปเดตสถานะการขนส่ง")
         tracking = st.text_input("เลข Tracking",
                                     value=po.get('tracking_number') or '',
                                     placeholder="เช่น KE12345678")
@@ -1546,9 +1629,30 @@ def render_ship_form(po):
 
 
 def render_receive_form(po):
-    """ผู้สั่งหรือแอดมิน: บันทึกการรับของ"""
-    st.markdown("#### 📦 บันทึกการรับของ")
-    st.caption("ตรวจสอบจำนวนและสภาพสินค้า")
+    """ผู้สั่งหรือแอดมิน: บันทึกการรับของ — B2B style"""
+    # Hero banner with PO context
+    sup = po.get('supplier_name') or '—'
+    n_items = len(po.get('items', []))
+    tracking = po.get('tracking_number') or '—'
+    expected = fmt_date(po.get('expected_date')) if po.get('expected_date') else '—'
+
+    st.markdown(f"""
+    <div style="background:linear-gradient(135deg, var(--brand-700), var(--brand-900));
+                color:white; padding:18px 22px; border-radius:12px;
+                margin:8px 0 16px; display:flex; align-items:center; gap:14px;">
+        <div style="width:48px; height:48px; background:rgba(255,255,255,0.15);
+                    border-radius:12px; display:flex; align-items:center;
+                    justify-content:center; font-size:24px;">📦</div>
+        <div style="flex:1;">
+            <div style="font-size:16px; font-weight:700; margin-bottom:2px;">
+                บันทึกการรับของ — {po['po_number']}
+            </div>
+            <div style="font-size:12px; opacity:0.85;">
+                {sup} • {n_items} รายการ • Tracking: {tracking} • คาดได้รับ: {expected}
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     items = po.get('items', [])
     key = f"recv_{po['id']}"

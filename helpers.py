@@ -88,16 +88,32 @@ STATUS_EMOJI = {
     "ยกเลิก": "❌",
 }
 
+# B2B pill class mapping
+STATUS_PILL_CLASS = {
+    "รอจัดซื้อดำเนินการ": "pending",
+    "สั่งซื้อแล้ว": "ordered",
+    "กำลังขนส่ง": "shipping",
+    "รับของแล้ว": "received",
+    "มีปัญหา": "problem",
+    "เสร็จสมบูรณ์": "done",
+    "ยกเลิก": "cancel",
+}
+
+
+def status_pill_html(status):
+    """สร้าง HTML pill สำหรับ status (B2B style)"""
+    cls = STATUS_PILL_CLASS.get(status, "cancel")
+    return f'<span class="lp-pill {cls}">{status}</span>'
+
+
+def show_status_pill(status):
+    """แสดง status pill (เรียก st.markdown ให้เลย)"""
+    st.markdown(status_pill_html(status), unsafe_allow_html=True)
+
 
 def show_status_badge(status):
-    color = STATUS_COLOR.get(status, '#666')
-    emoji = STATUS_EMOJI.get(status, '⚪')
-    st.markdown(
-        f'<span style="background:{color}22; color:{color}; '
-        f'padding:3px 12px; border-radius:12px; font-size:12px; font-weight:500;">'
-        f'{emoji} {status}</span>',
-        unsafe_allow_html=True,
-    )
+    """Legacy — ใช้ pill แทน"""
+    show_status_pill(status)
 
 
 def days_indicator(d_str, status):

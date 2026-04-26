@@ -68,7 +68,7 @@ def send_webhook(url, message):
 def notify_user(user, title, message, po_number=""):
     """แจ้งทุกช่องทางที่ตั้งค่าไว้"""
     body = f"""<html><body style="font-family:Arial,sans-serif;">
-        <h2 style="color:#C8A47E;">📦 Lab Parfumo PO</h2>
+        <h2 style="color:#4A6FA5;">📦 Lab Parfumo PO</h2>
         <p>เรียน {user.get('full_name', '')},</p>
         <p><b>{title}</b></p>
         <p>{message}</p>
