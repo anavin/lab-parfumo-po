@@ -768,8 +768,8 @@ def create_withdrawal(equipment_id, qty, purpose, withdrawn_by, withdrawn_by_nam
         if not r.data:
             return None
 
-        # ตัดสต๊อก
-        new_stock = current_stock - qty
+        # ตัดสต๊อก — บังคับเป็น int (DB column เป็น integer)
+        new_stock = int(current_stock - qty)
         sb.table("equipment").update({"stock": new_stock}).eq("id", equipment_id).execute()
 
         return r.data[0]
@@ -812,7 +812,7 @@ def delete_withdrawal(withdrawal_id, restore_stock=True):
                 eq_r = sb.table("equipment").select("stock").eq("id", w['equipment_id']).execute()
                 if eq_r.data:
                     cur = float(eq_r.data[0].get('stock', 0) or 0)
-                    new_stock = cur + float(w.get('qty', 0) or 0)
+                    new_stock = int(cur + float(w.get('qty', 0) or 0))
                     sb.table("equipment").update({"stock": new_stock}).eq("id", w['equipment_id']).execute()
         sb.table("withdrawals").delete().eq("id", withdrawal_id).execute()
         return True
