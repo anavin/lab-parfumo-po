@@ -518,6 +518,7 @@ def render_header():
                 ('equipment', '📦 Catalog'),
                 ('reports', '📈 รายงาน'),
                 ('users', '👥 ผู้ใช้'),
+                ('settings', '⚙️ ตั้งค่า'),
             ]
         nc = st.columns(len(modes))
         for i, (k, label) in enumerate(modes):
@@ -1092,7 +1093,7 @@ def render_dashboard():
 from pages_po import (render_po_list, render_po_create, render_po_view,
                        render_pending_receipt)
 from pages_admin import (render_equipment, render_reports,
-                          render_users, render_notifications)
+                          render_users, render_notifications, render_settings)
 from pages_withdraw import render_withdraw
 
 
@@ -1253,6 +1254,11 @@ def main():
         render_users()
     elif mode == 'notifications':
         render_notifications()
+    elif mode == 'settings':
+        if not is_admin():
+            st.error("❌ เฉพาะแอดมิน")
+            return
+        render_settings()
 
 
 if __name__ == "__main__":

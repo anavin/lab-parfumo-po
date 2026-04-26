@@ -219,6 +219,52 @@ def get_users():
         return []
 
 
+# ===== Company Settings =====
+def get_company_settings():
+    """ดึงข้อมูลบริษัท (มีแถวเดียวเสมอ)"""
+    try:
+        r = get_supabase().table("company_settings").select("*").eq("id", 1).execute()
+        if r.data:
+            return r.data[0]
+    except Exception:
+        pass
+    # fallback ถ้ายังไม่ได้ migrate
+    return {
+        'name': 'Lab Parfumo',
+        'name_th': 'แล็บ พาฟูโม่',
+        'address': '',
+        'phone': '',
+        'email': '',
+        'tax_id': '',
+        'website': 'www.labparfumo.com',
+        'logo_url': '',
+    }
+
+
+def update_company_settings(name="", name_th="", address="", phone="",
+                              email="", tax_id="", website="", logo_url="",
+                              updated_by_name=""):
+    """อัปเดตข้อมูลบริษัท (admin)"""
+    try:
+        from datetime import datetime
+        sb = get_supabase()
+        payload = {
+            "id": 1,
+            "name": name, "name_th": name_th,
+            "address": address, "phone": phone,
+            "email": email, "tax_id": tax_id,
+            "website": website, "logo_url": logo_url,
+            "updated_at": datetime.now().isoformat(),
+            "updated_by_name": updated_by_name,
+        }
+        # upsert (insert ถ้ายังไม่มี / update ถ้ามี)
+        sb.table("company_settings").upsert(payload).execute()
+        return True
+    except Exception as e:
+        st.error(f"บันทึกไม่สำเร็จ: {e}")
+        return False
+
+
 def get_admins():
     """ดึงรายชื่อ admin ทั้งหมด (สำหรับส่ง notification)"""
     try:

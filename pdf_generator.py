@@ -18,15 +18,30 @@ BRAND_DARK = "#3D3530"
 BRAND_LIGHT = "#F8F4EE"
 BRAND_BORDER = "#E8DDD0"
 
-COMPANY_INFO = {
+COMPANY_INFO_DEFAULT = {
     'name': 'Lab Parfumo',
-    'name_th': 'แล็บ พาฟูโม่',
-    'address': '123 ถนนสุขุมวิท แขวงคลองตัน เขตวัฒนา กรุงเทพฯ 10110',
-    'phone': '02-xxx-xxxx',
-    'email': 'contact@labparfumo.com',
-    'tax_id': '0-1055-64xxx-xx-x',
+    'name_th': 'บริษัท ทัช ไดเวอร์เจนซ์ จำกัด',
+    'address': '',
+    'phone': '',
+    'email': '',
+    'tax_id': '0115564002651',
     'website': 'www.labparfumo.com',
 }
+
+
+def _get_company_info():
+    """ดึงข้อมูลบริษัทจาก DB — fallback เป็น default ถ้า DB ไม่ได้ตั้งค่า"""
+    try:
+        import database as db
+        info = db.get_company_settings()
+        # merge กับ default ป้องกัน key หาย
+        return {**COMPANY_INFO_DEFAULT, **info}
+    except Exception:
+        return COMPANY_INFO_DEFAULT
+
+
+# Backward compat — module-level alias (ใช้เฉพาะตอน import)
+COMPANY_INFO = COMPANY_INFO_DEFAULT
 
 
 def _fmt_date(d):
@@ -254,15 +269,22 @@ def _base_css():
 
 
 def _company_header_html():
-    return f"""
-    <div>
-        <h1>{COMPANY_INFO['name']}</h1>
-        <div class="small">{COMPANY_INFO['name_th']}</div>
-        <div class="small" style="margin-top:4px;">{COMPANY_INFO['address']}</div>
-        <div class="small">โทร: {COMPANY_INFO['phone']} | อีเมล: {COMPANY_INFO['email']}</div>
-        <div class="small">เลขผู้เสียภาษี: {COMPANY_INFO['tax_id']}</div>
-    </div>
-    """
+    info = _get_company_info()
+    parts = [f'<h1>{info.get("name", "Lab Parfumo")}</h1>']
+    if info.get('name_th'):
+        parts.append(f'<div class="small">{info["name_th"]}</div>')
+    if info.get('address'):
+        parts.append(f'<div class="small" style="margin-top:4px;">{info["address"]}</div>')
+    contact_line = []
+    if info.get('phone'):
+        contact_line.append(f'โทร: {info["phone"]}')
+    if info.get('email'):
+        contact_line.append(f'อีเมล: {info["email"]}')
+    if contact_line:
+        parts.append(f'<div class="small">{" | ".join(contact_line)}</div>')
+    if info.get('tax_id'):
+        parts.append(f'<div class="small">เลขผู้เสียภาษี: {info["tax_id"]}</div>')
+    return f'<div>{"".join(parts)}</div>'
 
 
 # ==================================================================
@@ -407,7 +429,7 @@ def generate_po_pdf(po: dict, role: str = "admin") -> bytes:
         </tr>
     </table>
 
-    <div class="footer">Lab Parfumo | {COMPANY_INFO['website']}</div>
+    <div class="footer">{_get_company_info().get('name', 'Lab Parfumo')} | {_get_company_info().get('website', '')}</div>
     <div class="footer-meta">พิมพ์เมื่อ: {datetime.now().strftime('%d/%m/%Y %H:%M')}</div>
 
     </body></html>
@@ -536,7 +558,7 @@ def generate_grn_pdf(po: dict, delivery: dict) -> bytes:
         </tr>
     </table>
 
-    <div class="footer">Lab Parfumo | {COMPANY_INFO['website']}</div>
+    <div class="footer">{_get_company_info().get('name', 'Lab Parfumo')} | {_get_company_info().get('website', '')}</div>
     <div class="footer-meta">พิมพ์เมื่อ: {datetime.now().strftime('%d/%m/%Y %H:%M')}</div>
 
     </body></html>

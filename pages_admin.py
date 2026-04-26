@@ -1152,3 +1152,123 @@ def _render_approve_form(eq):
         if cancel:
             st.session_state.pop('catalog_approve_id', None)
             st.rerun()
+
+
+# ==================================================================
+# Company Settings
+# ==================================================================
+
+def render_settings():
+    """หน้าตั้งค่าบริษัท — ใช้ใน PDF / Header / Footer"""
+    if not is_admin():
+        st.error("เฉพาะแอดมิน")
+        return
+
+    st.markdown("## ⚙️ ตั้งค่าบริษัท")
+    st.caption("ข้อมูลที่แสดงใน PDF ใบ PO + ใบรับของ + ทั้งระบบ")
+
+    # ดึงค่าปัจจุบัน
+    info = db.get_company_settings()
+
+    with st.form("company_form"):
+        st.markdown("#### 🏢 ข้อมูลพื้นฐาน")
+        c1, c2 = st.columns(2)
+        with c1:
+            name = st.text_input(
+                "ชื่อบริษัท (อังกฤษ) *",
+                value=info.get('name', '') or '',
+                placeholder="Lab Parfumo Co., Ltd.",
+            )
+        with c2:
+            name_th = st.text_input(
+                "ชื่อบริษัท (ไทย)",
+                value=info.get('name_th', '') or '',
+                placeholder="บริษัท ทัช ไดเวอร์เจนซ์ จำกัด",
+            )
+
+        address = st.text_area(
+            "ที่อยู่",
+            value=info.get('address', '') or '',
+            placeholder="เลขที่ ... ถนน ... แขวง ... เขต ... กรุงเทพฯ 10000",
+            height=80,
+        )
+
+        st.markdown("#### 📞 ติดต่อ")
+        c3, c4 = st.columns(2)
+        with c3:
+            phone = st.text_input(
+                "โทรศัพท์",
+                value=info.get('phone', '') or '',
+                placeholder="02-xxx-xxxx",
+            )
+        with c4:
+            email = st.text_input(
+                "อีเมล",
+                value=info.get('email', '') or '',
+                placeholder="contact@labparfumo.com",
+            )
+
+        c5, c6 = st.columns(2)
+        with c5:
+            tax_id = st.text_input(
+                "เลขผู้เสียภาษี",
+                value=info.get('tax_id', '') or '',
+                placeholder="0-1055-64xxx-xx-x",
+                help="แสดงใน PDF ใบ PO",
+            )
+        with c6:
+            website = st.text_input(
+                "เว็บไซต์",
+                value=info.get('website', '') or '',
+                placeholder="www.labparfumo.com",
+            )
+
+        st.markdown("---")
+        bc1, bc2 = st.columns([1, 4])
+        with bc1:
+            submit = st.form_submit_button(
+                "💾 บันทึก",
+                type="primary",
+                use_container_width=True,
+            )
+        with bc2:
+            st.caption(
+                f"📅 อัปเดตล่าสุด: {fmt_dt(info.get('updated_at')) if info.get('updated_at') else 'ยังไม่เคย'}"
+                f" • โดย: {info.get('updated_by_name') or '-'}"
+            )
+
+        if submit:
+            if not name.strip():
+                st.error("กรุณากรอกชื่อบริษัท")
+            else:
+                if db.update_company_settings(
+                    name=name.strip(),
+                    name_th=name_th.strip(),
+                    address=address.strip(),
+                    phone=phone.strip(),
+                    email=email.strip(),
+                    tax_id=tax_id.strip(),
+                    website=website.strip(),
+                    updated_by_name=uname(),
+                ):
+                    st.success("✅ บันทึกแล้ว — PDF จะใช้ข้อมูลใหม่ครั้งต่อไป")
+                    st.rerun()
+
+    # Preview ตัวอย่าง
+    st.markdown("---")
+    st.markdown("#### 👁️ ตัวอย่างที่แสดงใน PDF")
+    with st.container(border=True):
+        st.markdown(f"### {info.get('name', '-')}")
+        if info.get('name_th'):
+            st.caption(info['name_th'])
+        if info.get('address'):
+            st.caption(info['address'])
+        contact = []
+        if info.get('phone'):
+            contact.append(f"โทร: {info['phone']}")
+        if info.get('email'):
+            contact.append(f"อีเมล: {info['email']}")
+        if contact:
+            st.caption(" | ".join(contact))
+        if info.get('tax_id'):
+            st.caption(f"เลขผู้เสียภาษี: {info['tax_id']}")
