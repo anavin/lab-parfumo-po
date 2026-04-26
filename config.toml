@@ -1,0 +1,19 @@
+[theme]
+# Lab Parfumo PO Pro — บังคับ Light theme เสมอ
+# ระบุครบทุกสีเพื่อให้ Streamlit ไม่ fallback เป็น dark
+base = "light"
+primaryColor = "#4A6FA5"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F4F6FA"
+textColor = "#1F2937"
+font = "sans serif"
+
+# ปิด dark mode toggle ใน user settings
+[client]
+toolbarMode = "minimal"
+
+[server]
+maxUploadSize = 50
+
+[browser]
+gatherUsageStats = false
