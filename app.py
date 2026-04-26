@@ -226,6 +226,75 @@ st.markdown("""
         color: #4A6FA5 !important;
     }
 
+    /* ============================================ */
+    /* NUCLEAR OPTION — บังคับทุกปุ่ม Streamlit       */
+    /* ใช้ multiple selector + specificity สูง       */
+    /* (กันปุ่ม top-bar: 🔍 🔔 🚪 + 🛠️ เครื่องมือ)    */
+    /* ============================================ */
+
+    /* ทุก button element ในแอป — กัน hover เป็นดำ */
+    div[data-testid="stHorizontalBlock"] button:hover,
+    div[data-testid="stHorizontalBlock"] button:focus,
+    div[data-testid="stHorizontalBlock"] button:focus-visible,
+    div[data-testid="stHorizontalBlock"] button:active,
+    div[data-testid="column"] button:hover,
+    div[data-testid="column"] button:focus,
+    [data-testid="stVerticalBlock"] button:hover,
+    [data-testid="stVerticalBlock"] button:focus {
+        background-color: #F4F6FA !important;
+        background: #F4F6FA !important;
+        color: #4A6FA5 !important;
+        border-color: #4A6FA5 !important;
+        outline: none !important;
+    }
+
+    /* ถ้าเป็น primary — ใช้สีน้ำเงินเข้ม */
+    div[data-testid="stHorizontalBlock"] button[kind="primary"]:hover,
+    div[data-testid="stHorizontalBlock"] button[kind="primary"]:focus,
+    div[data-testid="stHorizontalBlock"] button[kind="primary"]:active,
+    div[data-testid="column"] button[kind="primary"]:hover {
+        background-color: #3A5A8C !important;
+        background: linear-gradient(135deg, #3A5A8C 0%, #4A6FA5 100%) !important;
+        color: #FFFFFF !important;
+        border-color: #3A5A8C !important;
+    }
+
+    /* Force child elements to inherit correct color */
+    div[data-testid="stHorizontalBlock"] button:hover *,
+    div[data-testid="stHorizontalBlock"] button:focus *,
+    div[data-testid="column"] button:hover *,
+    [data-testid="stVerticalBlock"] button:hover * {
+        color: #4A6FA5 !important;
+        background: transparent !important;
+    }
+    div[data-testid="stHorizontalBlock"] button[kind="primary"]:hover *,
+    div[data-testid="stHorizontalBlock"] button[kind="primary"]:focus *,
+    div[data-testid="column"] button[kind="primary"]:hover * {
+        color: #FFFFFF !important;
+    }
+
+    /* Streamlit button base — override shipping default */
+    button[data-testid="baseButton-secondary"],
+    button[data-testid="baseButton-primary"],
+    button[data-testid="baseButton-secondaryFormSubmit"],
+    button[data-testid="baseButton-primaryFormSubmit"] {
+        transition: all 0.15s ease !important;
+    }
+
+    /* กัน Streamlit ใช้ inline style override hover */
+    button[data-testid^="baseButton"]:hover {
+        background-color: #F4F6FA !important;
+        color: #4A6FA5 !important;
+    }
+    button[data-testid="baseButton-primary"]:hover,
+    button[data-testid="baseButton-primaryFormSubmit"]:hover {
+        background-color: #3A5A8C !important;
+        color: #FFFFFF !important;
+    }
+    button[data-testid^="baseButton"]:hover * {
+        color: inherit !important;
+    }
+
     /* Tabs */
     .stTabs [data-baseweb="tab-list"] {
         background-color: #FFFFFF !important;
