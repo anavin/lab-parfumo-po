@@ -61,35 +61,17 @@ st.markdown("""
         }
     }
 
-    /* ทุก text element — บังคับสีดำ/เทา (ใช้ wildcard กับ wide selector) */
-    .stApp *:not(.brand-name):not(.brand-logo):not([class*="ui-button"]):not([class*="badge"]) {
-        color: inherit;
-    }
+    /* บังคับ text element ทุกที่เป็นสีดำ */
     .stApp p, .stApp span, .stApp div, .stApp label, .stApp li, .stApp td, .stApp th,
     .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6,
     .stApp strong, .stApp b, .stApp em, .stApp i,
     .stMarkdown, .stMarkdown p, .stMarkdown span, .stMarkdown div,
     .stMarkdown li, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4,
     .stMarkdown strong, .stMarkdown b, .stMarkdown em,
-    [data-testid="stMarkdownContainer"], [data-testid="stMarkdownContainer"] *,
+    [data-testid="stMarkdownContainer"] > div,
+    [data-testid="stMarkdownContainer"] > div > p,
     [data-testid="stCaptionContainer"], [data-testid="stText"] {
-        color: #1F2937 !important;
-    }
-
-    /* CRITICAL: text ที่อยู่ใน custom HTML markdown ที่ใช้สี light text 
-       ตอนระบบเป็น dark — ให้ override กลับเป็นดำเสมอ */
-    [data-testid="stMarkdownContainer"] p,
-    [data-testid="stMarkdownContainer"] div,
-    [data-testid="stMarkdownContainer"] span:not([style*="color"]) {
-        color: #1F2937 !important;
-    }
-
-    /* แต่ element ที่ระบุ inline color เอง — เคารพสีนั้น */
-    [data-testid="stMarkdownContainer"] [style*="color:#"],
-    [data-testid="stMarkdownContainer"] [style*="color: #"],
-    [data-testid="stMarkdownContainer"] [style*="color:rgb"],
-    [data-testid="stMarkdownContainer"] [style*="color: rgb"] {
-        /* respect inline style */
+        color: #1F2937;
     }
 
     /* Caption ใช้สีเทา */
