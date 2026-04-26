@@ -1224,12 +1224,14 @@ def render_actions(po):
     # ===== สร้างรายการปุ่มที่ใช้งานได้ =====
     actions = []  # list of (label, type, callback or action_form)
 
-    # PDF download — ทุกคนดาวน์โหลดได้ (PDF จะปรับ content ตาม role)
-    actions.append(('pdf', '📥 ดาวน์โหลด PDF', 'primary'))
+    # PDF download — ขึ้นเมื่อมีข้อมูลครบแล้ว (ไม่ใช่สถานะ "รอจัดซื้อ")
+    # เพราะตอนรอจัดซื้อ ยังไม่มี supplier/ราคา → PDF ไม่มีประโยชน์
+    if status != "รอจัดซื้อดำเนินการ":
+        actions.append(('pdf', '📥 ดาวน์โหลด PDF', 'primary'))
 
-    # Admin: สั่งซื้อ
+    # Admin: สั่งซื้อ — primary action ตอนรอจัดซื้อ
     if is_admin() and status == "รอจัดซื้อดำเนินการ":
-        actions.append(('order', '🛒 สั่งซื้อ', 'secondary'))
+        actions.append(('order', '🛒 สั่งซื้อ', 'primary'))
 
     # Admin: อัปเดตขนส่ง
     if is_admin() and status == "สั่งซื้อแล้ว":
