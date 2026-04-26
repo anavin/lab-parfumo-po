@@ -26,8 +26,37 @@ def render_equipment():
         else:
             st.session_state.pop('catalog_edit_id', None)
 
+    # โหมดอนุมัติ pending equipment (full-width)
+    approve_id = st.session_state.get('catalog_approve_id')
+    if approve_id:
+        eq = db.get_equipment(approve_id)
+        if eq:
+            _render_approve_form(eq)
+            return
+        else:
+            st.session_state.pop('catalog_approve_id', None)
+
     st.markdown("## 📦 จัดการ Catalog สินค้า")
     st.caption("คลังข้อมูลสินค้า/อุปกรณ์ทั้งหมด — ทีมจะใช้สั่งซื้อจากที่นี่")
+
+    # ===== Pending equipment (รออนุมัติ) =====
+    pending_list = db.get_pending_equipment()
+    if pending_list:
+        with st.container(border=True):
+            hc1, hc2 = st.columns([4, 1])
+            with hc1:
+                st.markdown(
+                    f"### 🔔 รออนุมัติเพิ่ม Catalog "
+                    f"<span style='background:#FCD34D; color:#92400E; "
+                    f"padding:2px 10px; border-radius:12px; font-size:13px; "
+                    f"font-weight:bold;'>{len(pending_list)}</span>",
+                    unsafe_allow_html=True,
+                )
+                st.caption("รายการที่ user เพิ่มผ่านการสร้าง PO แต่ยังไม่ได้อยู่ใน catalog")
+
+            for eq in pending_list:
+                _render_pending_card(eq)
+        st.markdown("")
 
     # ===== จัดการหมวดหมู่ =====
     with st.expander("📂 จัดการหมวดหมู่"):
@@ -346,7 +375,7 @@ def _render_eq_admin_card(eq):
             f'<div style="display:flex; justify-content:space-between; '
             f'align-items:center; padding:6px 0; '
             f'border-top:1px solid #333;">'
-            f'<span style="color:#C8A47E; font-weight:500;">'
+            f'<span style="color:#4A6FA5; font-weight:500;">'
             f'💰 ฿{eq.get("last_cost", 0):,.2f}</span>'
             f'<span style="color:{color}; font-size:12px;">'
             f'{emoji} {stock_label}</span>'
@@ -418,7 +447,7 @@ def _render_eq_edit_fullwidth(eq):
                         if actual_i == 0:
                             st.markdown(
                                 '<div style="text-align:center; '
-                                'background:#C8A47E22; color:#C8A47E; '
+                                'background:#4A6FA522; color:#4A6FA5; '
                                 'padding:3px; border-radius:4px; '
                                 'font-size:11px; font-weight:500; '
                                 'margin-bottom:4px;">⭐ รูปหลัก</div>',
@@ -710,7 +739,7 @@ def render_reports():
                 ])
                 fig = px.line(df_daily, x='วันที่', y='ยอด',
                                 markers=True,
-                                color_discrete_sequence=['#C8A47E'])
+                                color_discrete_sequence=['#4A6FA5'])
                 fig.update_layout(
                     height=280,
                     margin=dict(l=10, r=10, t=10, b=10),
@@ -877,3 +906,213 @@ def render_notifications():
                         st.session_state['view_po_id'] = n['po_id']
                         st.session_state['mode'] = 'po_view'
                         st.rerun()
+
+
+# ==================================================================
+# Pending Equipment Approval
+# ==================================================================
+
+def _render_pending_card(eq):
+    """การ์ด pending equipment 1 รายการ"""
+    with st.container(border=True):
+        cols = st.columns([0.6, 3, 2, 1.5, 1.5])
+
+        # รูป
+        with cols[0]:
+            imgs = eq.get('image_urls') or []
+            if eq.get('image_url') and eq['image_url'] not in imgs:
+                imgs.insert(0, eq['image_url'])
+            if imgs:
+                try:
+                    st.image(imgs[0], width=60)
+                except Exception:
+                    st.markdown("✏️")
+            else:
+                st.markdown('<div style="font-size:32px;">✏️</div>',
+                              unsafe_allow_html=True)
+
+        with cols[1]:
+            st.markdown(f"**{eq.get('name', '-')}**")
+            st.caption(f"📦 หน่วย: {eq.get('unit', 'ชิ้น')} • 📷 {len(imgs)} รูป")
+            if eq.get('suggested_notes'):
+                st.caption(f"💬 {eq['suggested_notes']}")
+
+        with cols[2]:
+            st.caption(f"👤 เสนอโดย: {eq.get('suggested_by_name', '-')}")
+            sa = eq.get('suggested_at', '')
+            if sa:
+                st.caption(f"📅 {sa[:10]}")
+            # Link ไปดู PO ต้นทาง
+            po_id = eq.get('suggested_from_po')
+            if po_id:
+                po = db.get_purchase_order(po_id)
+                if po:
+                    st.caption(f"🔗 จาก {po.get('po_number', '-')}")
+
+        with cols[3]:
+            if st.button("✅ อนุมัติ", use_container_width=True,
+                          type="primary", key=f"app_{eq['id']}"):
+                st.session_state['catalog_approve_id'] = eq['id']
+                st.rerun()
+
+        with cols[4]:
+            confirm_key = f"rej_confirm_{eq['id']}"
+            if st.session_state.get(confirm_key):
+                if st.button("⚠️ ยืนยัน", use_container_width=True,
+                              key=f"rej2_{eq['id']}",
+                              help="ลบรายการนี้ทิ้ง"):
+                    if db.reject_equipment(eq['id']):
+                        st.session_state.pop(confirm_key, None)
+                        st.success("ลบแล้ว")
+                        st.rerun()
+            else:
+                if st.button("❌ ปฏิเสธ", use_container_width=True,
+                              key=f"rej_{eq['id']}"):
+                    st.session_state[confirm_key] = True
+                    st.rerun()
+
+
+def _render_approve_form(eq):
+    """ฟอร์ม approve equipment — แอดมินกรอกข้อมูลเพิ่ม"""
+    if st.button("← กลับ"):
+        st.session_state.pop('catalog_approve_id', None)
+        st.rerun()
+
+    st.markdown("## ✅ อนุมัติเพิ่มเข้า Catalog")
+    st.info(
+        f"กำลังอนุมัติ **{eq.get('name', '-')}** ที่เสนอโดย "
+        f"**{eq.get('suggested_by_name', '-')}** — กรอกข้อมูลให้ครบก่อนเพิ่มเข้า Catalog"
+    )
+
+    # ===== แสดงข้อมูล PO ต้นทาง =====
+    src_po_id = eq.get('suggested_from_po')
+    if src_po_id:
+        src_po = db.get_purchase_order(src_po_id)
+        if src_po:
+            cols_info = st.columns(3)
+            with cols_info[0]:
+                st.caption("🔗 PO ต้นทาง")
+                st.markdown(f"**{src_po.get('po_number', '-')}**")
+            with cols_info[1]:
+                st.caption("🏭 Supplier")
+                st.markdown(f"**{src_po.get('supplier_name') or 'ยังไม่ระบุ'}**")
+            with cols_info[2]:
+                # หาราคาที่ admin กรอกในรายการนี้
+                price_in_po = 0
+                for it in (src_po.get('items') or []):
+                    if it.get('equipment_id') == eq['id']:
+                        price_in_po = float(it.get('unit_price') or 0)
+                        break
+                st.caption("💰 ราคาที่สั่ง")
+                if price_in_po > 0:
+                    st.markdown(f"**฿{price_in_po:,.2f}**")
+                else:
+                    st.markdown("_ยังไม่ได้กรอก_")
+
+    # แสดงรูป (ถ้ามี)
+    imgs = eq.get('image_urls') or []
+    if eq.get('image_url') and eq['image_url'] not in imgs:
+        imgs.insert(0, eq['image_url'])
+    if imgs:
+        st.markdown("#### 📷 รูปที่ user upload")
+        cols_per_row = 4
+        for r in range(0, len(imgs), cols_per_row):
+            row_imgs = imgs[r:r + cols_per_row]
+            ic = st.columns(cols_per_row)
+            for i, url in enumerate(row_imgs):
+                with ic[i]:
+                    try:
+                        st.image(url, use_container_width=True)
+                    except Exception:
+                        pass
+
+    if eq.get('suggested_notes'):
+        st.caption(f"💬 หมายเหตุจาก user: {eq['suggested_notes']}")
+
+    st.markdown("---")
+    st.markdown("#### 📝 ข้อมูลสินค้า (admin กรอก)")
+
+    with st.form(f"approve_form_{eq['id']}"):
+        c1, c2 = st.columns(2)
+        with c1:
+            sku = st.text_input(
+                "SKU *",
+                value="",
+                placeholder="เช่น B30-001",
+                help="รหัสสินค้า (จำเป็น) — ต่างจาก SKU ที่ระบบ generate ชั่วคราว",
+            )
+            name = st.text_input("ชื่อ *", value=eq.get('name', ''))
+            unit = st.text_input("หน่วย", value=eq.get('unit', 'ชิ้น'))
+        with c2:
+            cats = db.get_categories()
+            cat_options = cats + ["+ เพิ่มหมวดใหม่"]
+            cat_choice = st.selectbox(
+                "หมวด *",
+                cat_options,
+                key=f"cat_choice_{eq['id']}",
+            )
+            new_cat = ""
+            if cat_choice == "+ เพิ่มหมวดใหม่":
+                new_cat = st.text_input("ชื่อหมวดใหม่", placeholder="เช่น ขวดบรรจุ")
+            last_cost = st.number_input(
+                "ราคาล่าสุด (฿)",
+                min_value=0.0,
+                value=float(eq.get('last_cost') or 0),
+                step=1.0,
+                help="ใช้ค่าที่ admin กรอกตอนสั่ง supplier — แก้ไขได้",
+            )
+            stock = st.number_input(
+                "สต็อกเริ่มต้น",
+                min_value=0,
+                value=0,
+                step=1,
+                help="ปกติเริ่มจาก 0 — เพิ่มหลังรับของจาก PO",
+            )
+
+        description = st.text_area(
+            "รายละเอียด",
+            value=eq.get('description') or eq.get('suggested_notes') or '',
+            help="สเปค ขนาด ฯลฯ",
+            height=80,
+        )
+
+        bc1, bc2 = st.columns([1, 4])
+        with bc1:
+            submit = st.form_submit_button(
+                "✅ อนุมัติเพิ่มเข้า Catalog",
+                type="primary",
+                use_container_width=True,
+            )
+        with bc2:
+            cancel = st.form_submit_button("ยกเลิก", use_container_width=True)
+
+        if submit:
+            errs = []
+            if not sku.strip():
+                errs.append("SKU")
+            if not name.strip():
+                errs.append("ชื่อ")
+            final_cat = new_cat.strip() if cat_choice == "+ เพิ่มหมวดใหม่" else cat_choice
+            if not final_cat or final_cat == "(รออนุมัติ)":
+                errs.append("หมวด")
+            if errs:
+                st.error(f"กรุณากรอก: {', '.join(errs)}")
+            else:
+                if db.approve_equipment(
+                    eq_id=eq['id'],
+                    sku=sku.strip(),
+                    name=name.strip(),
+                    category=final_cat,
+                    unit=unit.strip() or 'ชิ้น',
+                    description=description,
+                    last_cost=last_cost,
+                    stock=stock,
+                    approved_by_name=uname(),
+                ):
+                    st.session_state.pop('catalog_approve_id', None)
+                    st.success(f"✅ เพิ่ม '{name}' เข้า Catalog แล้ว")
+                    st.rerun()
+
+        if cancel:
+            st.session_state.pop('catalog_approve_id', None)
+            st.rerun()
