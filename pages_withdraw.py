@@ -292,7 +292,36 @@ def _render_withdraw_history():
             st.metric("🏷️ สินค้าที่เบิก", f"{unique_eq}")
 
     st.markdown("---")
-    st.caption(f"พบ **{len(withdrawals)}** รายการ")
+
+    # ===== Header: count + export buttons =====
+    hc1, hc2, hc3 = st.columns([3, 1, 1])
+    with hc1:
+        st.caption(f"พบ **{len(withdrawals)}** รายการ")
+    with hc2:
+        if withdrawals:
+            csv_bytes = _build_csv(withdrawals)
+            now_str = datetime.now().strftime('%Y%m%d_%H%M')
+            st.download_button(
+                "📥 ดาวน์โหลด CSV",
+                data=csv_bytes,
+                file_name=f"withdrawals_{now_str}.csv",
+                mime="text/csv",
+                use_container_width=True,
+                key="dl_csv_w",
+            )
+    with hc3:
+        if withdrawals:
+            xlsx_bytes = _build_xlsx(withdrawals)
+            if xlsx_bytes:
+                now_str = datetime.now().strftime('%Y%m%d_%H%M')
+                st.download_button(
+                    "📊 Excel",
+                    data=xlsx_bytes,
+                    file_name=f"withdrawals_{now_str}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                    key="dl_xlsx_w",
+                )
 
     if not withdrawals:
         st.info("ยังไม่มีประวัติการเบิกในช่วงเวลานี้")
@@ -343,3 +372,166 @@ def _render_withdraw_history():
                                       use_container_width=True):
                             st.session_state[del_key] = True
                             st.rerun()
+
+
+# ==================================================================
+# Export Helpers
+# ==================================================================
+
+def _build_csv(withdrawals):
+    """สร้าง CSV bytes (รองรับภาษาไทย — UTF-8 with BOM ให้ Excel เปิดถูก)"""
+    import io
+    import csv
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Header
+    writer.writerow([
+        'วันที่ใช้',
+        'สินค้า',
+        'SKU',
+        'หมวด',
+        'จำนวน',
+        'หน่วย',
+        'ใช้ทำอะไร',
+        'ผู้เบิก',
+        'หมายเหตุ',
+        'บันทึกเมื่อ',
+    ])
+
+    # ดึง equipment สำหรับเอา SKU + หมวด
+    try:
+        eq_list = db.get_equipment_list(active_only=False)
+        eq_map = {e['id']: e for e in eq_list}
+    except Exception:
+        eq_map = {}
+
+    for w in withdrawals:
+        eq = eq_map.get(w.get('equipment_id'), {})
+        # วันที่ใช้
+        wd = w.get('withdrawn_at', '')
+        try:
+            wd_dt = datetime.fromisoformat(wd.replace('Z', '+00:00'))
+            wd_str = wd_dt.strftime('%Y-%m-%d')
+        except Exception:
+            wd_str = wd[:10] if wd else ''
+
+        # บันทึกเมื่อ
+        ca = w.get('created_at', '')
+        try:
+            ca_dt = datetime.fromisoformat(ca.replace('Z', '+00:00'))
+            ca_str = ca_dt.strftime('%Y-%m-%d %H:%M')
+        except Exception:
+            ca_str = ca[:16] if ca else ''
+
+        writer.writerow([
+            wd_str,
+            w.get('equipment_name', ''),
+            eq.get('sku') or '-',
+            eq.get('category') or '-',
+            float(w.get('qty', 0) or 0),
+            w.get('unit', ''),
+            w.get('purpose', ''),
+            w.get('withdrawn_by_name', ''),
+            w.get('notes', ''),
+            ca_str,
+        ])
+
+    # เพิ่ม BOM (\ufeff) ให้ Excel รู้ว่าเป็น UTF-8 → เปิดภาษาไทยถูกต้อง
+    csv_str = '\ufeff' + output.getvalue()
+    return csv_str.encode('utf-8')
+
+
+def _build_xlsx(withdrawals):
+    """สร้าง Excel bytes — return None ถ้า openpyxl ไม่มี"""
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        import io
+    except ImportError:
+        return None
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "ประวัติการเบิก"
+
+    headers = [
+        'วันที่ใช้', 'สินค้า', 'SKU', 'หมวด',
+        'จำนวน', 'หน่วย', 'ใช้ทำอะไร', 'ผู้เบิก',
+        'หมายเหตุ', 'บันทึกเมื่อ',
+    ]
+
+    # เขียน header + style
+    header_fill = PatternFill(start_color="4A6FA5", end_color="4A6FA5", fill_type="solid")
+    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    border_thin = Border(
+        left=Side(style='thin', color='CCCCCC'),
+        right=Side(style='thin', color='CCCCCC'),
+        top=Side(style='thin', color='CCCCCC'),
+        bottom=Side(style='thin', color='CCCCCC'),
+    )
+
+    for col_idx, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col_idx, value=h)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+        cell.border = border_thin
+
+    # ดึง equipment
+    try:
+        eq_list = db.get_equipment_list(active_only=False)
+        eq_map = {e['id']: e for e in eq_list}
+    except Exception:
+        eq_map = {}
+
+    # เขียน data
+    for row_idx, w in enumerate(withdrawals, 2):
+        eq = eq_map.get(w.get('equipment_id'), {})
+
+        wd = w.get('withdrawn_at', '')
+        try:
+            wd_dt = datetime.fromisoformat(wd.replace('Z', '+00:00'))
+            wd_str = wd_dt.strftime('%Y-%m-%d')
+        except Exception:
+            wd_str = wd[:10] if wd else ''
+
+        ca = w.get('created_at', '')
+        try:
+            ca_dt = datetime.fromisoformat(ca.replace('Z', '+00:00'))
+            ca_str = ca_dt.strftime('%Y-%m-%d %H:%M')
+        except Exception:
+            ca_str = ca[:16] if ca else ''
+
+        row_data = [
+            wd_str,
+            w.get('equipment_name', ''),
+            eq.get('sku') or '-',
+            eq.get('category') or '-',
+            float(w.get('qty', 0) or 0),
+            w.get('unit', ''),
+            w.get('purpose', ''),
+            w.get('withdrawn_by_name', ''),
+            w.get('notes', ''),
+            ca_str,
+        ]
+        for col_idx, val in enumerate(row_data, 1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=val)
+            cell.border = border_thin
+            cell.alignment = Alignment(vertical='center')
+            if col_idx == 5:  # คอลัมน์จำนวน
+                cell.alignment = Alignment(horizontal='right', vertical='center')
+
+    # ตั้งความกว้าง column
+    widths = [12, 28, 12, 16, 10, 10, 30, 16, 24, 18]
+    for i, w_val in enumerate(widths, 1):
+        ws.column_dimensions[chr(64 + i) if i <= 26 else 'A'].width = w_val
+
+    # Freeze header row
+    ws.freeze_panes = "A2"
+
+    # Save to bytes
+    bio = io.BytesIO()
+    wb.save(bio)
+    return bio.getvalue()
