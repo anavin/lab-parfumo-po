@@ -884,16 +884,52 @@ def render_notifications():
         )
         return
 
-    if any(not n['is_read'] for n in notifs):
-        if st.button("✓ อ่านทั้งหมด"):
-            db.mark_all_notifications_read(user_id)
-            st.rerun()
+    # ===== Stats + Filter =====
+    unread = [n for n in notifs if not n.get('is_read')]
+    read = [n for n in notifs if n.get('is_read')]
 
-    for n in notifs:
+    sc1, sc2, sc3 = st.columns(3)
+    with sc1:
+        st.metric("📬 ทั้งหมด", len(notifs))
+    with sc2:
+        st.metric("🔵 ยังไม่อ่าน", len(unread))
+    with sc3:
+        st.metric("✓ อ่านแล้ว", len(read))
+
+    fc1, fc2 = st.columns([3, 1])
+    with fc1:
+        f_filter = st.radio(
+            "กรอง",
+            ["ทั้งหมด", "🔵 ยังไม่อ่าน", "✓ อ่านแล้ว"],
+            horizontal=True,
+            label_visibility="collapsed",
+        )
+    with fc2:
+        if unread:
+            if st.button("✓ อ่านทั้งหมด", use_container_width=True):
+                db.mark_all_notifications_read(user_id)
+                st.rerun()
+
+    # apply filter
+    if f_filter == "🔵 ยังไม่อ่าน":
+        filtered = unread
+    elif f_filter == "✓ อ่านแล้ว":
+        filtered = read
+    else:
+        filtered = notifs
+
+    if not filtered:
+        st.info(f"ไม่มีการแจ้งเตือนในกลุ่ม '{f_filter}'")
+        return
+
+    st.markdown("---")
+    st.caption(f"แสดง **{len(filtered)}** รายการ")
+
+    for n in filtered:
         with st.container(border=True):
             c1, c2 = st.columns([5, 1])
             with c1:
-                ico = "🔵" if not n['is_read'] else "⚪"
+                ico = "🔵" if not n.get('is_read') else "⚪"
                 st.markdown(f"{ico} **{n['title']}**")
                 if n.get('message'):
                     st.caption(n['message'])
@@ -901,7 +937,7 @@ def render_notifications():
             with c2:
                 if n.get('po_id'):
                     if st.button("ดู PO →", key=f"vn_{n['id']}", use_container_width=True):
-                        if not n['is_read']:
+                        if not n.get('is_read'):
                             db.mark_notification_read(n['id'])
                         st.session_state['view_po_id'] = n['po_id']
                         st.session_state['mode'] = 'po_view'
