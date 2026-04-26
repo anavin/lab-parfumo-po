@@ -1457,14 +1457,27 @@ def render_receive_form(po):
 
     items = po.get('items', [])
     key = f"recv_{po['id']}"
-    if key not in st.session_state:
-        st.session_state[key] = [{
-            'qty_received': it.get('qty', 0),
+
+    def _make_default(it):
+        return {
+            'qty_received': it.get('qty', 0) or 0,
             'qty_damaged': 0,
             'item_notes': '',
-        } for it in items]
+            'notes': '',
+        }
+
+    # init หรือ reset ถ้าจำนวนไม่ตรงกับ items
+    existing = st.session_state.get(key)
+    if (not isinstance(existing, list)
+            or len(existing) != len(items)):
+        st.session_state[key] = [_make_default(it) for it in items]
 
     data = st.session_state[key]
+
+    # ตรวจสอบเพิ่ม: แต่ละ entry ต้องเป็น dict
+    for i, it in enumerate(items):
+        if not isinstance(data[i], dict):
+            data[i] = _make_default(it)
 
     has_issue = False
     for i, item in enumerate(items):
