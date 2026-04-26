@@ -1298,14 +1298,43 @@ def render_actions(po):
                 elif action_id == 'clone':
                     if st.button(label, use_container_width=True,
                                   type=btn_type, key=f"clone_{po_id}",
-                                  help="สั่งซ้ำ — สร้าง PO ใหม่ด้วยรายการเดิม"):
-                        with st.spinner("กำลังคัดลอก..."):
-                            new_po = db.clone_purchase_order(po_id, uid(), uname())
-                        if new_po:
-                            st.session_state['view_po_id'] = new_po['id']
-                            st.session_state['action_form'] = None
-                            st.success(f"✅ สร้าง {new_po['po_number']} แล้ว")
-                            st.rerun()
+                                  help="คัดลอกรายการเดิม → ไปหน้าสร้าง PO ใหม่ (แก้ไขก่อนบันทึก)"):
+                        # โหลด items เดิมเข้า session_state ของหน้า PO Create
+                        # → user เห็น/แก้/เพิ่ม-ลบ รายการ ก่อนกดบันทึก
+                        items_clone = []
+                        for it in (po.get('items') or []):
+                            items_clone.append({
+                                'equipment_id': it.get('equipment_id'),
+                                'name': it.get('name'),
+                                'qty': int(it.get('qty', 0) or 0),
+                                'unit': it.get('unit', 'ชิ้น'),
+                                'notes': it.get('notes', ''),
+                                # เก็บรูปจาก custom item เดิม
+                                'image_urls': list(it.get('image_urls') or []),
+                            })
+                        st.session_state['po_items'] = items_clone
+                        st.session_state['_po_notes_value'] = (
+                            f"[คัดลอกจาก {po.get('po_number', '-')}] "
+                            f"{po.get('notes', '')}"
+                        ).strip()
+
+                        # บันทึก draft ไว้เลย → ถ้า user ออกหน้าก็ไม่หาย
+                        try:
+                            db.save_po_draft(uid(),
+                                              st.session_state['po_items'],
+                                              st.session_state['_po_notes_value'])
+                        except Exception:
+                            pass
+
+                        # reset draft_loaded flag ให้ render_po_create ไม่ overwrite
+                        st.session_state[f'_draft_loaded_{uid()}'] = True
+                        # ลบ widget key เก่า เพื่อให้ text_area แสดงค่าใหม่
+                        st.session_state.pop('po_create_notes', None)
+
+                        # redirect ไปหน้าสร้าง PO
+                        st.session_state['mode'] = 'po_create'
+                        st.session_state['action_form'] = None
+                        st.rerun()
                 else:
                     # เปิด form
                     if st.button(label, use_container_width=True,
