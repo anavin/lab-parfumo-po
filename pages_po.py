@@ -96,16 +96,11 @@ def render_pending_receipt():
 
     # apply sort
     if sort_by == "ใกล้ครบกำหนด":
-        # เลยกำหนด → วันนี้ → ใกล้ → อนาคต → ไม่ระบุ
-        filtered = (overdue if filtered == pos else
-                     [p for p in (overdue + today_due + upcoming + later + no_date) if p in filtered])
-        if filtered == pos:
-            filtered = overdue + today_due + upcoming + later + no_date
-        else:
-            ordered = []
-            for group in (overdue, today_due, upcoming, later, no_date):
-                ordered += [p for p in group if p in filtered]
-            filtered = ordered
+        # เรียง: เลยกำหนด → วันนี้ → ใกล้ (3 วัน) → อนาคต → ไม่ระบุ
+        ordered = []
+        for group in (overdue, today_due, upcoming, later, no_date):
+            ordered += [p for p in group if p in filtered]
+        filtered = ordered
     elif sort_by == "PO ใหม่สุด":
         filtered = sorted(filtered,
                             key=lambda p: p.get('created_at', ''),
@@ -113,10 +108,10 @@ def render_pending_receipt():
     else:  # PO เก่าสุด
         filtered = sorted(filtered, key=lambda p: p.get('created_at', ''))
 
-    st.caption(f"พบ {len(filtered)} รายการ")
+    st.caption(f"พบ **{len(filtered)}** รายการ")
 
     if not filtered:
-        st.info("ไม่พบ PO ที่ตรงกับเงื่อนไข")
+        st.info("ไม่พบ PO ที่ตรงกับการค้นหา")
         return
 
     # ----- รายการ -----
