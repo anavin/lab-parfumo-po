@@ -784,6 +784,61 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ====================================================================
+# JavaScript injection — กัน Streamlit ใส่ inline hover style สีดำ
+# ใช้ MutationObserver จับการเปลี่ยนแปลง + reset hover style ทันที
+# ====================================================================
+st.markdown("""
+<script>
+(function() {
+    // CSS rules ที่เราอยาก force
+    const cssText = `
+        button:not([kind="primary"]):hover {
+            background-color: #EEF2F7 !important;
+            color: #4A6FA5 !important;
+            border-color: #4A6FA5 !important;
+        }
+        button:not([kind="primary"]):hover * {
+            color: #4A6FA5 !important;
+        }
+        button[kind="primary"]:hover {
+            background-color: #3A5A8C !important;
+            color: #FFFFFF !important;
+        }
+        button[kind="primary"]:hover * {
+            color: #FFFFFF !important;
+        }
+    `;
+
+    function injectStyle() {
+        // เช็คก่อนว่า inject แล้วยัง
+        if (document.getElementById('lp-force-button-style')) return;
+
+        const style = document.createElement('style');
+        style.id = 'lp-force-button-style';
+        style.textContent = cssText;
+        // ใส่ที่ end of <head> เพื่อให้ priority สูงสุด
+        document.head.appendChild(style);
+    }
+
+    // inject ทันที
+    injectStyle();
+
+    // re-inject ถ้า Streamlit ลบ
+    const observer = new MutationObserver(function() {
+        injectStyle();
+    });
+    observer.observe(document.head, { childList: true, subtree: false });
+
+    // เมื่อ DOM โหลดเสร็จ ก็ inject อีกรอบ
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', injectStyle);
+    }
+    window.addEventListener('load', injectStyle);
+})();
+</script>
+""", unsafe_allow_html=True)
+
 
 def init_session():
     defaults = {
