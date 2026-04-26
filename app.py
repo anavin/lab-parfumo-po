@@ -494,7 +494,14 @@ def render_header():
     role_label = db.ROLES.get(user['role'], user['role'])
     emoji = "👑" if user['role'] == 'admin' else "👤"
 
-    c1, c2, c3 = st.columns([3, 5, 2])
+    # ===== Layout: Brand | Main Nav | Actions =====
+    if is_admin():
+        # admin: 4 main + 1 dropdown
+        c1, c2, c3 = st.columns([2.5, 6, 1.8])
+    else:
+        c1, c2, c3 = st.columns([2.5, 5, 1.8])
+
+    # ----- Brand -----
     with c1:
         st.markdown(f"""
         <div class="brand-header">
@@ -507,68 +514,137 @@ def render_header():
             </div>
         </div>
         """, unsafe_allow_html=True)
+
+    # ----- Main Nav (4 ปุ่มหลัก) -----
     with c2:
-        modes = [('dashboard', '📊 Dashboard'), ('po_list', '📝 ใบ PO')]
-        # เมนู "รอรับของ" — staff ทุกคนเห็น (รวม admin)
-        modes.append(('pending_receipt', '📦 รอรับของ'))
-        # เมนู "เบิกสินค้า" — ทุกคนเบิกได้
-        modes.append(('withdraw', '📤 เบิกสินค้า'))
+        main_modes = [
+            ('dashboard', '📊', 'Dashboard'),
+            ('po_list', '📝', 'ใบ PO'),
+            ('pending_receipt', '📦', 'รอรับของ'),
+            ('withdraw', '📤', 'เบิกของ'),
+        ]
+        admin_modes = [
+            ('equipment', '📦 Catalog'),
+            ('reports', '📈 รายงาน'),
+            ('users', '👥 ผู้ใช้'),
+            ('settings', '⚙️ ตั้งค่า'),
+        ]
+
+        n_main = len(main_modes)
         if is_admin():
-            modes += [
-                ('equipment', '📦 Catalog'),
-                ('reports', '📈 รายงาน'),
-                ('users', '👥 ผู้ใช้'),
-                ('settings', '⚙️ ตั้งค่า'),
-            ]
-        nc = st.columns(len(modes))
-        for i, (k, label) in enumerate(modes):
-            with nc[i]:
-                active = st.session_state['mode'] == k
-                if st.button(label, use_container_width=True,
-                             type="primary" if active else "secondary",
-                             key=f"nav_{k}"):
-                    # เคลียร์ state ทั้งหมดเมื่อเปลี่ยนหน้า
-                    st.session_state['mode'] = k
-                    st.session_state['view_po_id'] = None
-                    st.session_state['action_form'] = None
-                    st.session_state.pop('catalog_edit_id', None)
-                    st.session_state.pop('po_list_filter', None)
+            # 4 main + 1 admin dropdown trigger
+            cols = st.columns(n_main + 1)
+        else:
+            cols = st.columns(n_main)
+
+        cur_mode = st.session_state['mode']
+        for i, (k, icon, label) in enumerate(main_modes):
+            with cols[i]:
+                active = cur_mode == k
+                # ใช้ icon + label ในบรรทัดเดียว
+                btn_label = f"{icon} {label}"
+                if st.button(btn_label, use_container_width=True,
+                              type="primary" if active else "secondary",
+                              key=f"nav_{k}"):
+                    _switch_mode(k)
+
+        # admin: dropdown menu
+        if is_admin():
+            with cols[n_main]:
+                # มี active ใน admin section ไหม?
+                in_admin = cur_mode in [m[0] for m in admin_modes]
+                # แสดง label ตาม mode ปัจจุบัน หรือ "เครื่องมือ"
+                if in_admin:
+                    active_label = next(
+                        (m[1] for m in admin_modes if m[0] == cur_mode),
+                        "🛠️ เครื่องมือ",
+                    )
+                    btn_label = f"{active_label} ▾"
+                else:
+                    btn_label = "🛠️ เครื่องมือ ▾"
+
+                if st.button(btn_label, use_container_width=True,
+                              type="primary" if in_admin else "secondary",
+                              key="nav_admin_menu",
+                              help="Catalog / รายงาน / ผู้ใช้ / ตั้งค่า"):
+                    st.session_state['show_admin_menu'] = (
+                        not st.session_state.get('show_admin_menu', False)
+                    )
                     st.rerun()
+
+    # ----- Right Actions -----
     with c3:
         notifs = db.get_notifications(user['id'], unread_only=True)
-        nb = f"🔔 ({len(notifs)})" if notifs else "🔔"
-        nc0, nc1, nc2 = st.columns(3)
-        with nc0:
+        n_count = len(notifs)
+        nb = f"🔔 {n_count}" if n_count else "🔔"
+
+        ac1, ac2, ac3 = st.columns(3)
+        with ac1:
             if st.button("🔍", use_container_width=True,
-                         help="ค้นหา (Cmd+K)",
-                         key="open_search"):
+                          help="ค้นหา",
+                          key="open_search"):
                 st.session_state['show_search'] = not st.session_state.get('show_search', False)
                 st.rerun()
-        with nc1:
+        with ac2:
             if st.button(nb, use_container_width=True,
-                         type="primary" if notifs else "secondary"):
-                st.session_state['mode'] = 'notifications'
-                st.session_state['view_po_id'] = None
-                st.session_state['action_form'] = None
-                st.session_state.pop('catalog_edit_id', None)
-                st.rerun()
-        with nc2:
-            if st.button("🚪", use_container_width=True, help="ออกจากระบบ"):
-                # ลบ token จาก DB + cookie + URL
-                tk = st.session_state.get('session_token')
-                if tk:
-                    db.delete_session_token(tk)
-                clear_session_cookie()
-                try:
-                    for k in ('t', 'token'):
-                        if k in st.query_params:
-                            del st.query_params[k]
-                except Exception:
-                    pass
-                st.session_state.clear()
-                init_session()
-                st.rerun()
+                          type="primary" if n_count else "secondary",
+                          help="แจ้งเตือน",
+                          key="open_notif"):
+                _switch_mode('notifications')
+        with ac3:
+            if st.button("🚪", use_container_width=True,
+                          help="ออกจากระบบ",
+                          key="logout_btn"):
+                _do_logout()
+
+    # ===== Admin Dropdown Menu =====
+    if is_admin() and st.session_state.get('show_admin_menu'):
+        st.markdown(
+            '<div style="background:#F4F6FA; border:1px solid #E5E7EB; '
+            'border-radius:8px; padding:12px 16px; margin:8px 0;">'
+            '<b style="color:#4A6FA5;">🛠️ เครื่องมือผู้ดูแล</b></div>',
+            unsafe_allow_html=True,
+        )
+        am_cols = st.columns(len(admin_modes))
+        for i, (k, label) in enumerate(admin_modes):
+            with am_cols[i]:
+                active = cur_mode == k
+                if st.button(label, use_container_width=True,
+                              type="primary" if active else "secondary",
+                              key=f"adm_{k}"):
+                    st.session_state['show_admin_menu'] = False
+                    _switch_mode(k)
+
     st.divider()
+
+
+def _switch_mode(new_mode):
+    """เปลี่ยน mode + เคลียร์ state ที่เกี่ยวข้อง"""
+    st.session_state['mode'] = new_mode
+    st.session_state['view_po_id'] = None
+    st.session_state['action_form'] = None
+    st.session_state.pop('catalog_edit_id', None)
+    st.session_state.pop('catalog_approve_id', None)
+    st.session_state.pop('po_list_filter', None)
+    st.session_state['show_admin_menu'] = False
+    st.rerun()
+
+
+def _do_logout():
+    """logout — ลบ token + cookie + URL params"""
+    tk = st.session_state.get('session_token')
+    if tk:
+        db.delete_session_token(tk)
+    clear_session_cookie()
+    try:
+        for k in ('t', 'token'):
+            if k in st.query_params:
+                del st.query_params[k]
+    except Exception:
+        pass
+    st.session_state.clear()
+    init_session()
+    st.rerun()
 
 
 # ==================================================================
