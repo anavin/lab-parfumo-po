@@ -27,7 +27,176 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# CSS removed for debugging
+# Lab Parfumo Premium Styling
+st.markdown("""
+<style>
+    /* ============================================ */
+    /* Lab Parfumo — Steel Blue Theme               */
+    /* ============================================ */
+
+    /* Headings */
+    h1, h2, h3 {
+        color: #4A6FA5;
+        letter-spacing: 0.3px;
+    }
+    h1 {
+        background: linear-gradient(135deg, #4A6FA5 0%, #A8C0E0 50%, #4A6FA5 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        font-weight: 700;
+    }
+
+    /* Primary buttons (น้ำเงิน gradient) */
+    .stButton button[kind="primary"],
+    .stFormSubmitButton button[kind="primary"],
+    .stDownloadButton button[kind="primary"] {
+        background: linear-gradient(135deg, #4A6FA5 0%, #3A5A8C 100%);
+        border: none;
+        color: white;
+        font-weight: 500;
+        letter-spacing: 0.3px;
+        transition: all 0.2s ease;
+    }
+    .stButton button[kind="primary"]:hover,
+    .stFormSubmitButton button[kind="primary"]:hover,
+    .stDownloadButton button[kind="primary"]:hover {
+        background: linear-gradient(135deg, #3A5A8C 0%, #4A6FA5 100%);
+        color: white;
+        box-shadow: 0 4px 16px rgba(74, 111, 165, 0.3);
+        transform: translateY(-1px);
+    }
+
+    /* Tabs active */
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        color: #4A6FA5;
+        border-bottom-color: #4A6FA5;
+    }
+
+    /* Metric */
+    div[data-testid="stMetricValue"] {
+        color: #4A6FA5;
+        font-weight: 600;
+    }
+
+    /* Container with border */
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        border-radius: 12px;
+    }
+
+    /* ----- Brand Header (ใช้ใน render_header) ----- */
+    .brand-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 8px 0;
+    }
+    .brand-logo {
+        width: 40px; height: 40px;
+        background: linear-gradient(135deg, #4A6FA5, #3A5A8C);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 22px;
+        color: white;
+        box-shadow: 0 2px 8px rgba(74, 111, 165, 0.3);
+    }
+    .brand-name {
+        font-size: 20px;
+        font-weight: 700;
+        color: #4A6FA5;
+        letter-spacing: -0.5px;
+        line-height: 1;
+    }
+
+    /* Login splash */
+    .login-splash {
+        text-align: center;
+        margin: 40px 0;
+    }
+    .login-logo {
+        width: 80px; height: 80px;
+        background: linear-gradient(135deg, #4A6FA5, #3A5A8C);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 40px;
+        color: white;
+        margin: 0 auto 16px;
+        box-shadow: 0 4px 16px rgba(74, 111, 165, 0.3);
+    }
+    .login-title {
+        font-size: 32px;
+        font-weight: 700;
+        background: linear-gradient(135deg, #4A6FA5 0%, #A8C0E0 50%, #4A6FA5 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        margin-bottom: 4px;
+    }
+    .login-subtitle {
+        font-size: 14px;
+        color: #6B7280;
+        letter-spacing: 0.5px;
+    }
+
+    /* Empty state */
+    .empty-state {
+        text-align: center;
+        padding: 40px 20px;
+        background: #F4F6FA;
+        border-radius: 12px;
+        border: 1px dashed #D1D5DB;
+    }
+    .empty-icon {
+        font-size: 48px;
+        margin-bottom: 12px;
+        opacity: 0.6;
+    }
+    .empty-title {
+        color: #4A6FA5;
+        font-size: 18px;
+        font-weight: 500;
+        margin-bottom: 8px;
+    }
+    .empty-text {
+        color: #6B7280;
+        font-size: 14px;
+        max-width: 400px;
+        margin: 0 auto 16px;
+    }
+
+    /* Alerts */
+    .alert {
+        padding: 12px 16px;
+        border-radius: 8px;
+        margin-bottom: 12px;
+    }
+
+    /* Badges */
+    .badge {
+        display: inline-block;
+        padding: 3px 12px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+
+    /* Hide Streamlit branding */
+    #MainMenu { visibility: hidden; }
+    footer { visibility: hidden; }
+
+    /* Mobile responsive */
+    @media (max-width: 768px) {
+        h1 { font-size: 24px; }
+        h2 { font-size: 20px; }
+        h3 { font-size: 16px; }
+        .stButton button { min-height: 44px; font-size: 14px; }
+    }
+</style>
+""", unsafe_allow_html=True)
 
 
 def init_session():
