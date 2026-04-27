@@ -149,10 +149,14 @@ def _render_withdraw_card(eq):
             unsafe_allow_html=True,
         )
 
-        # Stock indicator
+        # Stock indicator (ใช้ reorder_level ถ้ากำหนด)
+        rl = float(eq.get('reorder_level') or 0)
         if stock == 0:
             stock_color, stock_emoji = "#A32D2D", "🔴"
             stock_label = "หมด"
+        elif rl > 0 and stock <= rl:
+            stock_color, stock_emoji = "#A32D2D", "🔴"
+            stock_label = f"ต้องสั่ง! เหลือ {stock:,.0f}/{rl:,.0f}"
         elif stock < 10:
             stock_color, stock_emoji = "#BA7517", "🟡"
             stock_label = f"เหลือ {stock:,.0f}"

@@ -923,6 +923,7 @@ def get_equipment(eid: str) -> Optional[dict]:
 def add_equipment(name: str, category: str, unit: str = "ชิ้น",
                   sku: str = "", description: str = "",
                   last_cost: float = 0, stock: int = 0,
+                  reorder_level: int = 0,
                   image_url=None, image_urls=None) -> Optional[dict]:
     try:
         urls_list = list(image_urls or [])
@@ -933,6 +934,7 @@ def add_equipment(name: str, category: str, unit: str = "ชิ้น",
             "name": name, "category": category, "unit": unit, "sku": sku,
             "description": description, "last_cost": float(last_cost),
             "stock": int(stock),
+            "reorder_level": int(reorder_level or 0),
             "image_url": primary,
             "image_urls": urls_list,
             "is_active": True,
@@ -949,6 +951,8 @@ def update_equipment(eid: str, **fields) -> bool:
             fields["last_cost"] = float(fields["last_cost"])
         if "stock" in fields:
             fields["stock"] = int(fields["stock"])
+        if "reorder_level" in fields:
+            fields["reorder_level"] = int(fields["reorder_level"] or 0)
         if "image_urls" in fields:
             urls = fields["image_urls"] or []
             fields["image_url"] = urls[0] if urls else None
@@ -1184,6 +1188,107 @@ def get_low_stock_equipment(threshold: int = 10) -> List[dict]:
                 .lt("stock", threshold).eq("is_active", True)
                 .execute().data or [])
     except Exception:
+        return []
+
+
+def get_reorder_alerts() -> List[dict]:
+    """ดึงสินค้าที่ stock <= reorder_level (ต้อง reorder_level > 0)
+    ใช้บน dashboard insight + แสดง badge ในหน้าเบิก/catalog
+    """
+    try:
+        sb = get_supabase()
+        items = (sb.table("equipment").select("*")
+                 .eq("is_active", True)
+                 .gt("reorder_level", 0).execute().data or [])
+        # filter ใน Python: stock <= reorder_level
+        return [e for e in items
+                if (e.get('stock') or 0) <= (e.get('reorder_level') or 0)]
+    except Exception:
+        log.exception("get_reorder_alerts failed")
+        return []
+
+
+def bulk_approve_equipment(eq_ids: List[str], approved_by_name: str = "",
+                           default_category: str = "อุปกรณ์อื่นๆ") -> tuple[int, int]:
+    """อนุมัติ pending equipment หลายชิ้นพร้อมกัน
+    ใช้ค่า default จาก suggested_notes / temp SKU — admin แก้ทีหลังได้
+
+    return (success_count, fail_count)
+    """
+    sb = get_supabase()
+    success = 0
+    fail = 0
+    for eq_id in eq_ids:
+        try:
+            eq = get_equipment(eq_id)
+            if not eq:
+                fail += 1
+                continue
+            # ใช้ SKU เดิม (จะเป็น PENDING-... ถ้า admin ไม่แก้)
+            sku = eq.get('sku') or f"AUTO-{eq_id[:8]}"
+            sb.table("equipment").update({
+                "sku": sku,
+                "category": default_category,
+                "unit": eq.get('unit') or "ชิ้น",
+                "description": eq.get('suggested_notes') or eq.get('description') or '',
+                "approval_status": "approved",
+                "approved_by_name": approved_by_name,
+                "approved_at": now_utc().isoformat(),
+            }).eq("id", eq_id).execute()
+            success += 1
+        except Exception:
+            log.exception(f"bulk_approve_equipment failed for {eq_id}")
+            fail += 1
+    return success, fail
+
+
+def bulk_reject_equipment(eq_ids: List[str], reason: str = "",
+                          admin_name: str = "") -> tuple[int, int]:
+    """ปฏิเสธ pending equipment หลายชิ้นพร้อมกัน — return (success, fail)"""
+    success = 0
+    fail = 0
+    for eq_id in eq_ids:
+        if reject_equipment(eq_id, reason=reason, admin_name=admin_name):
+            success += 1
+        else:
+            fail += 1
+    return success, fail
+
+
+def get_supplier_history() -> List[dict]:
+    """ดึง supplier ที่เคยใช้ พร้อมข้อมูล context (ครั้งล่าสุด, ติดต่อ)
+    return list ของ {name, last_contact, last_used, po_count}
+    """
+    try:
+        sb = get_supabase()
+        r = (sb.table("purchase_orders")
+             .select("supplier_name, supplier_contact, ordered_date, po_number")
+             .not_.is_("supplier_name", "null")
+             .order("ordered_date", desc=True)
+             .execute())
+        suppliers = {}
+        for row in (r.data or []):
+            name = (row.get('supplier_name') or '').strip()
+            if not name:
+                continue
+            if name not in suppliers:
+                suppliers[name] = {
+                    'name': name,
+                    'last_contact': row.get('supplier_contact') or '',
+                    'last_used': row.get('ordered_date') or '',
+                    'last_po': row.get('po_number') or '',
+                    'po_count': 0,
+                }
+            suppliers[name]['po_count'] += 1
+            # อัปเดต contact ถ้า supplier_contact ในรายการนี้ใหม่กว่าและไม่ว่าง
+            if (row.get('supplier_contact')
+                and not suppliers[name]['last_contact']):
+                suppliers[name]['last_contact'] = row['supplier_contact']
+        # เรียงตาม po_count ลด (supplier ที่ใช้บ่อย → ขึ้นก่อน)
+        return sorted(suppliers.values(),
+                      key=lambda s: (-s['po_count'], s['name']))
+    except Exception:
+        log.exception("get_supplier_history failed")
         return []
 
 

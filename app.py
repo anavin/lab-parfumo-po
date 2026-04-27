@@ -661,7 +661,56 @@ header[data-testid="stHeader"] { background: transparent !important; }
     .kpi-hero-grid { grid-template-columns: 1fr; }
     .kpi-side { border-left: none; border-top: 1px solid rgba(255,255,255,0.15); padding-left: 0; padding-top: 14px; margin-top: 4px; }
     .workflow-label { font-size: 10px; }
-    .stButton button { min-height: 40px; font-size: 13px; }
+
+    /* ปุ่มต้องใหญ่พอสำหรับนิ้ว (Apple HIG = 44px ขั้นต่ำ) */
+    .stButton button,
+    .stFormSubmitButton button,
+    .stDownloadButton button {
+        min-height: 44px !important;
+        font-size: 14px !important;
+        padding: 10px 14px !important;
+    }
+
+    /* ขยาย input ให้แตะง่าย */
+    .stTextInput input, .stNumberInput input, .stDateInput input,
+    [data-baseweb="select"] > div {
+        min-height: 42px !important;
+        font-size: 15px !important;
+    }
+
+    /* Title เล็กลง */
+    h1 { font-size: 20px; }
+    .page-title-text { font-size: 19px; }
+
+    /* PO num font monospace ลดขนาด */
+    .po-num { font-size: 12px; }
+
+    /* Status pill compact */
+    .lp-pill { font-size: 10px; padding: 3px 8px; }
+
+    /* ลด padding ของ container บน mobile */
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        padding: 10px !important;
+    }
+
+    /* Dashboard cards: ลด font ของ KPI ลงให้พอดีจอแคบ */
+    .kpi-value-main { font-size: 26px; }
+    .kpi-value-side { font-size: 18px; }
+
+    /* Status grid: ปุ่มย่อให้ค่อนไปทาง 2 col แทน 7 col */
+    .status-card { padding: 8px 10px; }
+    .status-card-num { font-size: 18px; }
+
+    /* Action row spacing เล็กลง */
+    .action-row { padding: 8px 0; }
+    .action-icon { width: 30px; height: 30px; font-size: 14px; }
+}
+
+/* Tablet (769-1024) — บีบให้ workflow timeline อ่านง่าย */
+@media (min-width: 769px) and (max-width: 1024px) {
+    .workflow { padding: 12px 14px; }
+    .workflow-label { font-size: 10px; }
+    .kpi-value-main { font-size: 28px; }
 }
 </style>"""
 try:
@@ -1448,24 +1497,173 @@ def render_dashboard():
                     </div>
                     """, unsafe_allow_html=True)
 
-                # Low stock
+                # Low stock + reorder alerts
                 eq_list = db.get_equipment_list()
+                # ใช้ reorder_level ก่อนถ้ามี — ไม่งั้น fallback ที่ stock <= 5
+                reorder_alerts = [e for e in eq_list
+                                   if (e.get('reorder_level') or 0) > 0
+                                   and (e.get('stock', 0) or 0) <= (e.get('reorder_level') or 0)]
                 low_stock = [e for e in eq_list
-                              if (e.get('stock', 0) or 0) <= 5
-                              and (e.get('stock', 0) or 0) > 0]
-                out_stock = [e for e in eq_list if (e.get('stock', 0) or 0) == 0]
-                low_total = len(low_stock) + len(out_stock)
+                              if (e.get('reorder_level') or 0) == 0
+                              and 0 < (e.get('stock', 0) or 0) <= 5]
+                out_stock = [e for e in eq_list
+                              if (e.get('stock', 0) or 0) == 0
+                              and (e.get('reorder_level') or 0) == 0]
+                low_total = len(reorder_alerts) + len(low_stock) + len(out_stock)
                 if low_total > 0:
-                    examples = ", ".join((e['name'][:20] for e in (low_stock + out_stock)[:3]))
+                    all_alerts = reorder_alerts + out_stock + low_stock
+                    examples = ", ".join((e['name'][:20] for e in all_alerts[:3]))
+                    badge = ""
+                    if reorder_alerts:
+                        badge = (f' <span style="background:var(--danger-soft); '
+                                  f'color:var(--danger); padding:2px 8px; '
+                                  f'border-radius:8px; font-size:10px; '
+                                  f'font-weight:600;">🔴 {len(reorder_alerts)} ต้องสั่ง</span>')
                     st.markdown(f"""
                     <div class="insight-card">
-                        <div class="insight-label">📦 สินค้าใกล้หมด/หมด</div>
+                        <div class="insight-label">📦 สินค้าใกล้หมด/หมด{badge}</div>
                         <div class="insight-value">{low_total} รายการ</div>
                         <div class="insight-meta">{examples}…</div>
                     </div>
                     """, unsafe_allow_html=True)
             except Exception:
                 pass
+
+        # ===== Trend Chart + Top Suppliers (full width below) =====
+        try:
+            _render_dashboard_charts(pos)
+        except Exception:
+            pass
+
+
+def _render_dashboard_charts(pos):
+    """กราฟ trend 6 เดือนล่าสุด + Top suppliers (admin only)
+    เรียกหลังจาก insight cards ใน dashboard
+    """
+    try:
+        import plotly.express as px
+    except ImportError:
+        return  # ไม่มี plotly → ไม่แสดงกราฟ
+
+    valid = [p for p in pos
+             if p.get('status') in ('สั่งซื้อแล้ว', 'กำลังขนส่ง',
+                                       'รับของแล้ว', 'มีปัญหา', 'เสร็จสมบูรณ์')
+             and p.get('total')]
+    if not valid:
+        return
+
+    # ===== Spacer + section title =====
+    st.markdown("<div style='height:14px;'></div>",
+                  unsafe_allow_html=True)
+
+    chart_c1, chart_c2 = st.columns([3, 2])
+
+    # ===== Chart 1: Spending trend ตามเดือน 6 เดือนล่าสุด =====
+    with chart_c1:
+        with st.container(border=True):
+            st.markdown(
+                '<div class="section-uppercase">📈 ยอดสั่งซื้อ 6 เดือนล่าสุด</div>',
+                unsafe_allow_html=True,
+            )
+            try:
+                today = date.today()
+                # สร้าง bucket ของ 6 เดือนล่าสุด (รวมเดือนนี้)
+                months = []
+                for i in range(5, -1, -1):
+                    y = today.year
+                    m = today.month - i
+                    while m <= 0:
+                        m += 12
+                        y -= 1
+                    months.append((y, m))
+                month_totals = {f"{y}-{m:02d}": 0.0 for (y, m) in months}
+
+                for p in valid:
+                    od = p.get('ordered_date') or p.get('created_at', '')[:10]
+                    if not od:
+                        continue
+                    key = od[:7]  # YYYY-MM
+                    if key in month_totals:
+                        month_totals[key] += float(p.get('total') or 0)
+
+                df_trend = pd.DataFrame([
+                    {'เดือน': k, 'ยอด': v}
+                    for k, v in month_totals.items()
+                ])
+
+                fig = px.bar(
+                    df_trend, x='เดือน', y='ยอด',
+                    color_discrete_sequence=['#4A6FA5'],
+                    text='ยอด',
+                )
+                fig.update_traces(
+                    texttemplate='฿%{text:,.0f}',
+                    textposition='outside',
+                )
+                fig.update_layout(
+                    showlegend=False,
+                    height=260,
+                    margin=dict(l=10, r=10, t=20, b=10),
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    yaxis=dict(showgrid=True, gridcolor='#E5E7EB',
+                                 title='', tickformat=',.0f'),
+                    xaxis=dict(title=''),
+                )
+                st.plotly_chart(fig, use_container_width=True,
+                                  config={'displayModeBar': False})
+            except Exception:
+                st.caption("กราฟไม่พร้อมแสดง")
+
+    # ===== Chart 2: Top 5 suppliers ตาม spending =====
+    with chart_c2:
+        with st.container(border=True):
+            st.markdown(
+                '<div class="section-uppercase">🏆 Top 5 Suppliers</div>',
+                unsafe_allow_html=True,
+            )
+            try:
+                supplier_totals = {}
+                for p in valid:
+                    sup = p.get('supplier_name') or '-'
+                    supplier_totals[sup] = supplier_totals.get(sup, 0) + (p.get('total') or 0)
+                top5 = sorted(supplier_totals.items(),
+                              key=lambda x: x[1], reverse=True)[:5]
+                if top5:
+                    df_sup = pd.DataFrame([
+                        {'Supplier': k[:20] + ('…' if len(k) > 20 else ''),
+                         'ยอด': v}
+                        for k, v in top5
+                    ])
+                    fig = px.bar(
+                        df_sup, x='ยอด', y='Supplier',
+                        orientation='h',
+                        color='ยอด',
+                        color_continuous_scale=[
+                            (0, '#A8C0E0'), (1, '#3A5A8C')
+                        ],
+                        text='ยอด',
+                    )
+                    fig.update_traces(
+                        texttemplate='฿%{text:,.0f}',
+                        textposition='outside',
+                    )
+                    fig.update_layout(
+                        showlegend=False,
+                        height=260,
+                        margin=dict(l=10, r=10, t=20, b=10),
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        yaxis=dict(title='', autorange='reversed'),
+                        xaxis=dict(title='', tickformat=',.0f'),
+                        coloraxis_showscale=False,
+                    )
+                    st.plotly_chart(fig, use_container_width=True,
+                                      config={'displayModeBar': False})
+                else:
+                    st.caption("ยังไม่มีข้อมูล supplier")
+            except Exception:
+                st.caption("กราฟไม่พร้อมแสดง")
 
 
 # ==================================================================

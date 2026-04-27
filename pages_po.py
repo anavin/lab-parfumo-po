@@ -10,6 +10,7 @@ from helpers import (current_user, is_admin, uid, uname, urole,
                       show_status_badge, show_status_pill, status_pill_html,
                       days_indicator,
                       show_empty_state)
+from exports import po_list_to_csv, po_list_to_xlsx
 
 
 # ==================================================================
@@ -253,9 +254,66 @@ def render_po_list():
 
     active = st.session_state['po_list_active_filter']
 
-    # Search box on top
-    search = st.text_input("🔍 ค้นหา", placeholder="เลข PO / supplier / สินค้า / ผู้สร้าง...",
-                           key="po_search", label_visibility="collapsed")
+    # ===== Row 1: Search + Sort =====
+    sc1, sc2 = st.columns([3, 2])
+    with sc1:
+        search = st.text_input(
+            "🔍 ค้นหา",
+            placeholder="เลข PO / supplier / สินค้า / ผู้สร้าง...",
+            key="po_search",
+            label_visibility="collapsed",
+        )
+    with sc2:
+        sort_by = st.selectbox(
+            "🔃 จัดเรียง",
+            ["ใหม่สุด", "เก่าสุด",
+             "ยอดเงินสูง→ต่ำ", "ยอดเงินต่ำ→สูง",
+             "Supplier A→Z", "ใกล้ครบกำหนด"],
+            key="po_list_sort",
+            label_visibility="collapsed",
+        )
+
+    # ===== Row 2: Advanced filter (date range) — collapsible =====
+    with st.expander("🔍 ตัวกรองขั้นสูง", expanded=False):
+        adv_c1, adv_c2, adv_c3, adv_c4 = st.columns(4)
+        with adv_c1:
+            date_filter_type = st.selectbox(
+                "📅 ช่วงวันที่",
+                ["ทั้งหมด", "7 วันล่าสุด", "30 วันล่าสุด",
+                 "เดือนนี้", "ปีนี้", "กำหนดเอง"],
+                key="po_list_date_filter",
+            )
+        sd_filter = ed_filter = None
+        today_d = date.today()
+        if date_filter_type == "7 วันล่าสุด":
+            sd_filter, ed_filter = today_d - timedelta(days=7), today_d
+        elif date_filter_type == "30 วันล่าสุด":
+            sd_filter, ed_filter = today_d - timedelta(days=30), today_d
+        elif date_filter_type == "เดือนนี้":
+            sd_filter, ed_filter = today_d.replace(day=1), today_d
+        elif date_filter_type == "ปีนี้":
+            sd_filter, ed_filter = today_d.replace(month=1, day=1), today_d
+        elif date_filter_type == "กำหนดเอง":
+            with adv_c2:
+                sd_filter = st.date_input("ตั้งแต่",
+                                            value=today_d - timedelta(days=30),
+                                            key="po_list_sd")
+            with adv_c3:
+                ed_filter = st.date_input("ถึง",
+                                            value=today_d,
+                                            key="po_list_ed")
+
+        if is_admin():
+            with adv_c4:
+                # Min amount filter (admin only)
+                min_amount = st.number_input(
+                    "💰 ยอดขั้นต่ำ (฿)",
+                    min_value=0, value=0, step=1000,
+                    key="po_list_min_amount",
+                    help="กรองเฉพาะ PO ที่ยอดสุทธิตั้งแต่ค่านี้ขึ้นไป (0 = ไม่กรอง)",
+                )
+        else:
+            min_amount = 0
 
     # Filter chips row
     chip_options = [("ทั้งหมด", len(pos))] + [
@@ -290,8 +348,73 @@ def render_po_list():
                     or s in (p.get('created_by_name') or '').lower()
                     or any(s in (it.get('name') or '').lower()
                             for it in (p.get('items') or []))]
+    # date range filter
+    if sd_filter and ed_filter:
+        sd_iso = sd_filter.isoformat()
+        ed_iso = ed_filter.isoformat()
+        filtered = [p for p in filtered
+                    if sd_iso <= (p.get('created_at') or '')[:10] <= ed_iso]
+    # min amount filter
+    if min_amount and min_amount > 0:
+        filtered = [p for p in filtered
+                    if (p.get('total') or 0) >= min_amount]
 
-    st.caption(f"พบ {len(filtered)} ใบ")
+    # ===== Apply sort =====
+    def _po_date_key(p):
+        return p.get('created_at') or ''
+    if sort_by == "ใหม่สุด":
+        filtered = sorted(filtered, key=_po_date_key, reverse=True)
+    elif sort_by == "เก่าสุด":
+        filtered = sorted(filtered, key=_po_date_key)
+    elif sort_by == "ยอดเงินสูง→ต่ำ":
+        filtered = sorted(filtered,
+                          key=lambda p: float(p.get('total') or 0),
+                          reverse=True)
+    elif sort_by == "ยอดเงินต่ำ→สูง":
+        filtered = sorted(filtered,
+                          key=lambda p: float(p.get('total') or 0))
+    elif sort_by == "Supplier A→Z":
+        filtered = sorted(filtered,
+                          key=lambda p: (p.get('supplier_name') or 'zzz').lower())
+    elif sort_by == "ใกล้ครบกำหนด":
+        # PO ที่มี expected_date ขึ้นก่อน (เก่าสุด/เลยกำหนด → ขึ้นบนสุด)
+        # PO ที่ไม่มี expected_date ลงล่างสุด
+        filtered = sorted(filtered,
+                          key=lambda p: (p.get('expected_date') or '9999-12-31'))
+
+    # ===== Caption + Export buttons =====
+    cap_c1, cap_c2, cap_c3 = st.columns([3, 1, 1])
+    with cap_c1:
+        st.caption(f"พบ **{len(filtered)}** ใบ")
+    if filtered:
+        now_str = datetime.now().strftime('%Y%m%d_%H%M')
+        with cap_c2:
+            try:
+                csv_bytes = po_list_to_csv(filtered)
+                st.download_button(
+                    "📥 CSV",
+                    data=csv_bytes,
+                    file_name=f"po_list_{now_str}.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                    key="po_list_csv",
+                )
+            except Exception:
+                st.caption("CSV ไม่พร้อม")
+        with cap_c3:
+            try:
+                xlsx_bytes = po_list_to_xlsx(filtered)
+                if xlsx_bytes:
+                    st.download_button(
+                        "📊 Excel",
+                        data=xlsx_bytes,
+                        file_name=f"po_list_{now_str}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                        key="po_list_xlsx",
+                    )
+            except Exception:
+                pass
 
     # ===== Compact PO rows =====
     for po in filtered:
@@ -312,9 +435,9 @@ def render_po_list():
         date_str = fmt_date(po.get('created_at'))[5:].replace('-', '/') if po.get('created_at') else ""
         creator = po.get('created_by_name', '—')
 
-        # Container with compact grid
+        # Container with compact grid — เพิ่ม clone button (c7)
         with st.container(border=True):
-            c1, c2, c3, c4, c5, c6 = st.columns([1.4, 3, 1.6, 1, 1.3, 0.8])
+            c1, c2, c3, c4, c5, c6, c7 = st.columns([1.4, 3, 1.6, 1, 1.3, 0.8, 0.8])
             with c1:
                 st.markdown(
                     f"<div class='po-num'>{po['po_number']}</div>",
@@ -347,6 +470,46 @@ def render_po_list():
                     st.session_state['view_po_id'] = po['id']
                     st.session_state['mode'] = 'po_view'
                     st.rerun()
+            with c7:
+                # Quick clone — admin หรือเจ้าของ PO
+                can_clone = is_admin() or po.get('created_by') == uid()
+                if can_clone:
+                    if st.button("🔁", key=f"qc_{po['id']}",
+                                  use_container_width=True,
+                                  help="คัดลอก PO นี้ → ไปหน้าสร้างใหม่"):
+                        _quick_clone_po(po)
+
+
+def _quick_clone_po(po):
+    """โหลด items จาก PO เดิม → ไปหน้าสร้างใหม่ (เก็บไว้ใน session)"""
+    items_clone = []
+    for it in (po.get('items') or []):
+        items_clone.append({
+            'equipment_id': it.get('equipment_id'),
+            'name': it.get('name'),
+            'qty': int(it.get('qty', 0) or 0),
+            'unit': it.get('unit', 'ชิ้น'),
+            'notes': it.get('notes', ''),
+            'image_urls': list(it.get('image_urls') or []),
+        })
+    st.session_state['po_items'] = items_clone
+    st.session_state['_po_notes_value'] = (
+        f"[คัดลอกจาก {po.get('po_number', '-')}] {po.get('notes', '')}"
+    ).strip()
+    try:
+        db.save_po_draft(uid(),
+                          st.session_state['po_items'],
+                          st.session_state['_po_notes_value'])
+    except Exception:
+        pass
+    # mark draft loaded เพื่อไม่ให้ render_po_create overwrite
+    st.session_state[f'_draft_loaded_{uid()}'] = True
+    st.session_state.pop('po_create_notes', None)
+    st.session_state['mode'] = 'po_create'
+    st.session_state['action_form'] = None
+    st.toast(f"📋 คัดลอก {po.get('po_number', '-')} แล้ว — แก้ไขได้ตามต้องการ",
+             icon="✅")
+    st.rerun()
 
 
 
@@ -361,12 +524,23 @@ def render_po_create():
 
     # ===== Load Draft (ครั้งแรกเข้าหน้า) =====
     draft_loaded_key = f'_draft_loaded_{uid()}'
+    draft_meta_key = f'_draft_meta_{uid()}'  # เก็บข้อมูลตอนโหลด draft (timestamp + n_items)
+    just_restored = False  # flag สำหรับแสดง banner ครั้งเดียว
+
     if not st.session_state.get(draft_loaded_key):
         draft = db.get_po_draft(uid())
         if draft and draft.get('items'):
             st.session_state['po_items'] = draft['items']
             if draft.get('notes'):
                 st.session_state['_po_notes_value'] = draft['notes']
+            # บันทึก meta สำหรับแสดง banner
+            st.session_state[draft_meta_key] = {
+                'restored_at': datetime.now().isoformat(),
+                'saved_at': draft.get('updated_at') or draft.get('created_at'),
+                'n_items': len(draft['items']),
+                'shown': False,
+            }
+            just_restored = True
         st.session_state[draft_loaded_key] = True
 
     # ===== Breadcrumb + Header =====
@@ -378,21 +552,50 @@ def render_po_create():
     </div>
     """, unsafe_allow_html=True)
 
+    # ===== Draft Recovery Banner (แสดงเมื่อเพิ่งโหลด draft จาก DB) =====
+    meta = st.session_state.get(draft_meta_key)
+    if meta and not meta.get('shown') and meta.get('n_items', 0) > 0:
+        saved_at_str = "ไม่ทราบเวลา"
+        try:
+            sa = meta.get('saved_at')
+            if sa:
+                sa_dt = datetime.fromisoformat(sa.replace('Z', '+00:00'))
+                saved_at_str = sa_dt.strftime('%d/%m/%Y %H:%M')
+        except Exception:
+            pass
+        bc1, bc2 = st.columns([5, 1])
+        with bc1:
+            st.info(
+                f"💾 **กู้คืน Draft แล้ว** — พบรายการที่บันทึกค้างไว้ "
+                f"({meta['n_items']} รายการ) เมื่อ {saved_at_str}\n\n"
+                f"แก้ไข/บันทึกต่อได้เลย หรือกด '🗑️ ล้าง' ทางขวาเพื่อเริ่มใหม่"
+            )
+        with bc2:
+            if st.button("✓ รับทราบ",
+                          use_container_width=True,
+                          key="ack_draft_banner"):
+                meta['shown'] = True
+                st.session_state[draft_meta_key] = meta
+                st.rerun()
+
     title_col, save_col = st.columns([5, 2])
     with title_col:
         st.markdown("""
         <div class="page-title-block">
             <div class="page-title-text">สร้างใบสั่งซื้อใหม่</div>
-            <div class="page-title-sub">เลือกสินค้าจาก catalog หรือพิมพ์ชื่อเอง</div>
+            <div class="page-title-sub">เลือกสินค้าจาก catalog หรือพิมพ์ชื่อเอง — ระบบบันทึก draft อัตโนมัติ</div>
         </div>
         """, unsafe_allow_html=True)
     with save_col:
         if st.session_state.get('po_items'):
-            now_str = datetime.now().strftime('%H:%M')
+            now_str = datetime.now().strftime('%H:%M:%S')
             st.markdown(f"""
             <div style="text-align:right; font-size:12px; color:var(--success);
                         font-weight:600; padding-top:14px;">
                 💾 บันทึกร่างอัตโนมัติ • {now_str}
+                <div style="font-size:10px; color:var(--slate-500); font-weight:400;">
+                    {len(st.session_state['po_items'])} รายการ • ไม่ต้องกังวลถ้าปิด tab
+                </div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -408,6 +611,7 @@ def render_po_create():
                 st.session_state['po_items'] = []
                 st.session_state['_po_notes_value'] = ''
                 st.session_state.pop(draft_loaded_key, None)
+                st.session_state.pop(draft_meta_key, None)
                 st.session_state.pop('po_create_notes', None)
                 st.success("ล้างแล้ว")
                 st.rerun()
@@ -565,6 +769,7 @@ def render_po_create():
                         st.session_state['po_items'] = []
                         st.session_state['_po_notes_value'] = ''
                         st.session_state.pop(f'_draft_loaded_{uid()}', None)
+                        st.session_state.pop(f'_draft_meta_{uid()}', None)
                         # ลบ widget key เพื่อให้ form refresh
                         st.session_state.pop('po_create_notes', None)
                         st.session_state['view_po_id'] = new_po['id']
@@ -1338,12 +1543,24 @@ def render_actions(po):
                         st.button(label, use_container_width=True,
                                     disabled=True, key=f"pdf_disabled_{po_id}")
                 elif action_id == 'close':
-                    if st.button(label, use_container_width=True,
-                                  type=btn_type, key=f"close_{po_id}"):
-                        with st.spinner("กำลังปิดงาน..."):
-                            db.update_po_status(po_id, "เสร็จสมบูรณ์",
-                                                  uname(), role, "ปิดงาน")
-                        st.rerun()
+                    # confirm 2-step (กดครั้งแรก → ยืนยัน → ดำเนินการ)
+                    cf_key = f"_close_confirm_{po_id}"
+                    if st.session_state.get(cf_key):
+                        if st.button(f"⚠️ ยืนยันปิดงาน",
+                                      use_container_width=True,
+                                      type="primary",
+                                      key=f"close_yes_{po_id}"):
+                            with st.spinner("กำลังปิดงาน..."):
+                                db.update_po_status(po_id, "เสร็จสมบูรณ์",
+                                                      uname(), role, "ปิดงาน")
+                            st.session_state.pop(cf_key, None)
+                            st.toast("✅ ปิดงานเรียบร้อย", icon="🎉")
+                            st.rerun()
+                    else:
+                        if st.button(label, use_container_width=True,
+                                      type=btn_type, key=f"close_{po_id}"):
+                            st.session_state[cf_key] = True
+                            st.rerun()
                 elif action_id == 'clone':
                     if st.button(label, use_container_width=True,
                                   type=btn_type, key=f"clone_{po_id}",
@@ -1423,17 +1640,59 @@ def render_order_form(po):
     </div>
     """, unsafe_allow_html=True)
 
+    # ===== Supplier history (autocomplete) =====
+    supplier_history = db.get_supplier_history()
+    sup_names = [s['name'] for s in supplier_history]
+    contact_map = {s['name']: s.get('last_contact', '') for s in supplier_history}
+
+    NEW_SUPPLIER = "+ พิมพ์ supplier ใหม่"
+    sup_options = [NEW_SUPPLIER] + sup_names
+
+    # ค่า prefill: ถ้า PO นี้มี supplier เก่าแล้ว → เลือก supplier นั้น
+    cur_sup = (po.get('supplier_name') or '').strip()
+    if cur_sup and cur_sup in sup_names:
+        default_sup_idx = sup_options.index(cur_sup)
+    else:
+        default_sup_idx = 0  # NEW_SUPPLIER
+
+    # selectbox อยู่นอก form เพื่อให้ rerun แล้ว text_input ปรับตามได้ทันที
+    sup_choice = st.selectbox(
+        "🏭 Supplier (เลือกจากประวัติ หรือพิมพ์ใหม่)",
+        sup_options,
+        index=default_sup_idx,
+        key=f"_order_sup_choice_{po['id']}",
+        help=f"มี supplier ในประวัติ {len(sup_names)} ราย — เลือกเพื่อ autofill ข้อมูลติดต่อ",
+    )
+
     with st.form("order_form"):
         col1, col2 = st.columns(2)
         with col1:
-            supplier_name = st.text_input("ชื่อ Supplier *",
-                                            value=po.get('supplier_name') or '')
+            if sup_choice == NEW_SUPPLIER:
+                supplier_name = st.text_input(
+                    "ชื่อ Supplier *",
+                    value=cur_sup if cur_sup not in sup_names else '',
+                    placeholder="เช่น บริษัท XYZ จำกัด",
+                )
+            else:
+                # แสดงเป็น disabled text เพื่อให้เห็นชัดว่าใช้ตัวที่เลือก
+                st.text_input(
+                    "ชื่อ Supplier *",
+                    value=sup_choice, disabled=True,
+                )
+                supplier_name = sup_choice
             ordered_date = st.date_input("วันที่สั่ง", value=date.today())
         with col2:
-            supplier_contact = st.text_area("ข้อมูลติดต่อ",
-                                              value=po.get('supplier_contact') or '',
-                                              height=80,
-                                              placeholder="เบอร์ / อีเมล / ที่อยู่")
+            # autofill contact จาก history (ถ้ายังไม่มีค่าใน PO นี้)
+            existing_contact = po.get('supplier_contact') or ''
+            if not existing_contact and sup_choice != NEW_SUPPLIER:
+                existing_contact = contact_map.get(sup_choice, '')
+            supplier_contact = st.text_area(
+                "ข้อมูลติดต่อ",
+                value=existing_contact,
+                height=80,
+                placeholder="เบอร์ / อีเมล / ที่อยู่",
+                help="autofill จากประวัติ — แก้ไขได้",
+            )
             expected_date = st.date_input("วันที่คาดว่าได้รับ *",
                                             value=date.today() + timedelta(days=7))
 

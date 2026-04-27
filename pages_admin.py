@@ -6,6 +6,7 @@ import pandas as pd
 import database as db
 import notify
 from helpers import fmt_date, fmt_dt, is_admin, uid, uname, show_empty_state
+from exports import equipment_to_csv, equipment_to_xlsx
 
 
 # ==================================================================
@@ -59,6 +60,9 @@ def render_equipment():
                     unsafe_allow_html=True,
                 )
                 st.caption("รายการที่ user เพิ่มผ่านการสร้าง PO แต่ยังไม่ได้อยู่ใน catalog")
+
+            # ===== Bulk action toolbar =====
+            _render_pending_bulk_toolbar(pending_list)
 
             for eq in pending_list:
                 _render_pending_card(eq)
@@ -207,6 +211,17 @@ def render_equipment():
                 u = st.text_input("หน่วย", value="ชิ้น")
                 lc = st.number_input("ราคาต้นทุนล่าสุด", min_value=0.0, step=1.0)
                 stk = st.number_input("คงเหลือ", min_value=0, step=1, value=0)
+            # ===== Reorder level (NEW) =====
+            rc1, rc2 = st.columns(2)
+            with rc1:
+                rl = st.number_input(
+                    "🔴 Reorder Level (จุดสั่งซื้อใหม่)",
+                    min_value=0, step=1, value=0,
+                    help="เมื่อสต็อก ≤ ค่านี้ ระบบจะแสดงเตือน 🔴 (0 = ปิดการเตือน)",
+                )
+            with rc2:
+                st.caption("💡 **Tip:**")
+                st.caption("ตั้งค่าให้ครอบคลุมการใช้ใน 1-2 สัปดาห์")
             d = st.text_area("รายละเอียด", height=60)
             imgs = st.file_uploader(
                 "รูป (อัปโหลดได้หลายรูป)",
@@ -227,7 +242,8 @@ def render_equipment():
                                 urls.append(url)
                         db.add_equipment(name=n, category=cat, unit=u, sku=sk,
                                            description=d, last_cost=lc,
-                                           stock=stk, image_urls=urls)
+                                           stock=stk, reorder_level=rl,
+                                           image_urls=urls)
                     st.success("เพิ่มแล้ว")
                     st.rerun()
 
@@ -241,11 +257,27 @@ def render_equipment():
         )
         return
 
-    c1, c2 = st.columns([1, 2])
+    # ===== Filter + Sort + Export =====
+    c1, c2, c3 = st.columns([1, 2, 1.2])
     with c1:
-        f_cat = st.selectbox("หมวดหมู่", ["ทั้งหมด"] + db.get_categories())
+        f_cat = st.selectbox("หมวดหมู่", ["ทั้งหมด"] + db.get_categories(),
+                              key="cat_filter")
     with c2:
-        f_search = st.text_input("🔍 ค้นหา", placeholder="ชื่อหรือ SKU")
+        f_search = st.text_input("🔍 ค้นหา", placeholder="ชื่อหรือ SKU",
+                                  key="cat_search")
+    with c3:
+        f_sort = st.selectbox(
+            "🔃 จัดเรียง",
+            ["ชื่อ A→Z", "สต็อกน้อย→มาก", "สต็อกมาก→น้อย",
+             "ใกล้ต้องสั่ง 🔴", "ใหม่สุด", "ราคาสูง→ต่ำ"],
+            key="cat_sort",
+        )
+
+    # Quick filter: low stock toggle
+    show_low_only = st.checkbox(
+        "🔴 แสดงเฉพาะสินค้าที่ต้องสั่งใหม่ (stock ≤ reorder level)",
+        value=False, key="cat_show_low_only",
+    )
 
     filt = items[:]
     if f_cat != "ทั้งหมด":
@@ -256,8 +288,64 @@ def render_equipment():
                 if s in i.get('name', '').lower()
                 or s in (i.get('sku') or '').lower()
                 or s in (i.get('description') or '').lower()]
+    if show_low_only:
+        filt = [i for i in filt
+                if (i.get('reorder_level') or 0) > 0
+                and (i.get('stock') or 0) <= (i.get('reorder_level') or 0)]
 
-    st.caption(f"พบ {len(filt)} รายการ")
+    # apply sort
+    if f_sort == "ชื่อ A→Z":
+        filt = sorted(filt, key=lambda e: (e.get('name') or '').lower())
+    elif f_sort == "สต็อกน้อย→มาก":
+        filt = sorted(filt, key=lambda e: float(e.get('stock') or 0))
+    elif f_sort == "สต็อกมาก→น้อย":
+        filt = sorted(filt, key=lambda e: float(e.get('stock') or 0), reverse=True)
+    elif f_sort == "ใกล้ต้องสั่ง 🔴":
+        # มีตั้ง reorder_level + ใกล้/หมดก่อน
+        def _reorder_key(e):
+            rl = e.get('reorder_level') or 0
+            stock = e.get('stock') or 0
+            if rl > 0:
+                # ตัวที่ stock - reorder_level ติดลบมากสุด (ห่างจากเป้า) → ขึ้นก่อน
+                return (0, stock - rl, (e.get('name') or '').lower())
+            return (1, stock, (e.get('name') or '').lower())
+        filt = sorted(filt, key=_reorder_key)
+    elif f_sort == "ใหม่สุด":
+        filt = sorted(filt, key=lambda e: (e.get('created_at') or ''), reverse=True)
+    elif f_sort == "ราคาสูง→ต่ำ":
+        filt = sorted(filt, key=lambda e: float(e.get('last_cost') or 0), reverse=True)
+
+    # caption + export
+    cap_c1, cap_c2, cap_c3 = st.columns([3, 1, 1])
+    with cap_c1:
+        st.caption(f"พบ **{len(filt)}** รายการ")
+    if filt:
+        now_str = datetime.now().strftime('%Y%m%d_%H%M')
+        with cap_c2:
+            try:
+                csv_bytes = equipment_to_csv(filt)
+                st.download_button(
+                    "📥 CSV", data=csv_bytes,
+                    file_name=f"catalog_{now_str}.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                    key="cat_csv",
+                )
+            except Exception:
+                pass
+        with cap_c3:
+            try:
+                xlsx_bytes = equipment_to_xlsx(filt)
+                if xlsx_bytes:
+                    st.download_button(
+                        "📊 Excel", data=xlsx_bytes,
+                        file_name=f"catalog_{now_str}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                        key="cat_xlsx",
+                    )
+            except Exception:
+                pass
 
     # ---- Catalog Cards (3 ต่อแถว) ----
     for row_start in range(0, len(filt), 3):
@@ -268,14 +356,19 @@ def render_equipment():
                 _render_eq_admin_card(eq)
 
 
-def _stock_status(stock):
-    """คืน (emoji, css_class, color, label) ตาม stock"""
-    if stock is None or stock == 0:
+def _stock_status(stock, reorder_level=0):
+    """คืน (emoji, css_class, color, label) ตาม stock + reorder_level (NEW)
+    ถ้ากำหนด reorder_level > 0 จะใช้เกณฑ์นี้ก่อน
+    """
+    s = int(stock or 0)
+    rl = int(reorder_level or 0)
+    if s == 0:
         return ("⚠️", "out", "#A32D2D", "หมด")
-    elif stock < 10:
-        return ("⚠️", "low", "#BA7517", f"เหลือ {stock}")
-    else:
-        return ("✓", "ok", "#1D9E75", f"คงเหลือ {stock}")
+    if rl > 0 and s <= rl:
+        return ("🔴", "reorder", "#A32D2D", f"ต้องสั่ง! เหลือ {s}/{rl}")
+    if s < 10:
+        return ("⚠️", "low", "#BA7517", f"เหลือ {s}")
+    return ("✓", "ok", "#1D9E75", f"คงเหลือ {s}")
 
 
 def _render_eq_admin_card(eq):
@@ -374,10 +467,12 @@ def _render_eq_admin_card(eq):
                         unsafe_allow_html=True)
 
         # ===== แถวราคา + Stock chip =====
-        emoji, cls, color, stock_label = _stock_status(eq.get('stock', 0))
+        emoji, cls, color, stock_label = _stock_status(
+            eq.get('stock', 0), eq.get('reorder_level', 0),
+        )
 
         # Stock chip colors
-        if cls == "out":
+        if cls in ("out", "reorder"):
             chip_bg = "var(--danger-soft)"
             chip_color = "var(--danger)"
             chip_border = "rgba(220, 38, 38, 0.2)"
@@ -537,8 +632,8 @@ def _render_eq_edit_fullwidth(eq):
             u = st.text_input("📐 หน่วย", value=eq.get('unit', 'ชิ้น'),
                                 placeholder="เช่น ชิ้น, ขวด, กล่อง")
 
-        # Row 3: ต้นทุน + คงเหลือ
-        r3c1, r3c2 = st.columns(2)
+        # Row 3: ต้นทุน + คงเหลือ + Reorder level
+        r3c1, r3c2, r3c3 = st.columns(3)
         with r3c1:
             lc = st.number_input("💰 ราคาต้นทุนล่าสุด (บาท)",
                                    value=float(eq.get('last_cost', 0)),
@@ -547,6 +642,19 @@ def _render_eq_edit_fullwidth(eq):
             stk = st.number_input("📦 คงเหลือในสต็อก",
                                     value=int(eq.get('stock', 0)),
                                     step=1, format="%d")
+        with r3c3:
+            current_rl = int(eq.get('reorder_level') or 0)
+            rl = st.number_input(
+                "🔴 Reorder Level",
+                value=current_rl, min_value=0, step=1, format="%d",
+                help="จุดสั่งซื้อใหม่ — เมื่อสต็อก ≤ ค่านี้ จะมี badge 🔴 เตือน "
+                     "(0 = ปิดการเตือน). แนะนำ: ใช้ปริมาณเฉลี่ย 1-2 สัปดาห์",
+            )
+
+        # คำเตือนถ้าสต็อกใกล้/หมดเกณฑ์ — แสดงทันทีก่อนบันทึก
+        if rl > 0 and stk <= rl:
+            st.warning(f"⚠️ สต็อกปัจจุบัน ({stk}) ≤ Reorder Level ({rl}) — "
+                        f"สินค้านี้จะถูกขึ้น Low-Stock List")
 
         # Description (ใหญ่)
         d = st.text_area(
@@ -579,7 +687,8 @@ def _render_eq_edit_fullwidth(eq):
                 db.update_equipment(eq['id'],
                                       name=n, category=cat, sku=sk,
                                       unit=u, last_cost=lc,
-                                      stock=stk, description=d)
+                                      stock=stk, reorder_level=rl,
+                                      description=d)
             st.success("✅ บันทึกเรียบร้อย")
             st.session_state.pop('catalog_edit_id', None)
             st.rerun()
@@ -1115,13 +1224,140 @@ def render_notifications():
 # Pending Equipment Approval
 # ==================================================================
 
+def _render_pending_bulk_toolbar(pending_list):
+    """Bulk action toolbar — checkbox 'เลือกทั้งหมด' + ปุ่มอนุมัติ/ปฏิเสธทั้งหมด
+
+    การเลือก: เก็บ id ที่ติ๊กไว้ใน st.session_state['_bulk_pending_ids'] (set)
+    """
+    sel_key = '_bulk_pending_ids'
+    if sel_key not in st.session_state:
+        st.session_state[sel_key] = set()
+    selected = st.session_state[sel_key]
+    # ลบ id ที่ไม่อยู่ใน list แล้ว (ถูกอนุมัติ/ปฏิเสธไปแล้ว)
+    valid_ids = {e['id'] for e in pending_list}
+    selected &= valid_ids
+
+    n_sel = len(selected)
+    n_total = len(pending_list)
+
+    with st.container():
+        bc1, bc2, bc3, bc4 = st.columns([2.5, 1, 1.5, 1.5])
+        with bc1:
+            select_all = st.checkbox(
+                f"☑️ เลือกทั้งหมด ({n_sel}/{n_total})",
+                value=(n_sel == n_total and n_total > 0),
+                key="_bulk_pending_select_all",
+            )
+            # toggle
+            if select_all and n_sel != n_total:
+                st.session_state[sel_key] = set(valid_ids)
+                st.rerun()
+            elif not select_all and n_sel == n_total and n_total > 0:
+                st.session_state[sel_key] = set()
+                st.rerun()
+        with bc2:
+            if n_sel > 0:
+                if st.button(f"❌ ล้าง", use_container_width=True,
+                              key="_bulk_pending_clear",
+                              help="ล้างที่เลือก + ยกเลิก confirm"):
+                    st.session_state[sel_key] = set()
+                    # ยกเลิก confirm state ทั้งหมด
+                    st.session_state.pop('_bulk_approve_confirm', None)
+                    st.session_state.pop('_bulk_reject_confirm', None)
+                    st.rerun()
+        with bc3:
+            disabled = n_sel == 0
+            confirm_key = '_bulk_approve_confirm'
+            if st.session_state.get(confirm_key):
+                if st.button(f"⚠️ ยืนยันอนุมัติ {n_sel} รายการ",
+                              type="primary",
+                              use_container_width=True,
+                              key="_bulk_approve_do"):
+                    success, fail = db.bulk_approve_equipment(
+                        list(selected),
+                        approved_by_name=uname(),
+                    )
+                    st.session_state[sel_key] = set()
+                    st.session_state.pop(confirm_key, None)
+                    msg = f"✅ อนุมัติ {success} รายการแล้ว"
+                    if fail:
+                        msg += f" (ล้มเหลว {fail})"
+                    st.toast(msg, icon="✅")
+                    st.success(
+                        f"{msg}\n\n"
+                        "💡 แอดมินสามารถเข้าไปแก้ไข SKU/หมวด/ราคา "
+                        "ของแต่ละรายการได้ที่ Catalog"
+                    )
+                    st.rerun()
+            else:
+                if st.button(f"✅ อนุมัติทั้งหมด ({n_sel})",
+                              use_container_width=True,
+                              type="primary" if n_sel > 0 else "secondary",
+                              disabled=disabled,
+                              key="_bulk_approve_btn",
+                              help="อนุมัติทุกรายการที่เลือก — ใช้หมวด 'อุปกรณ์อื่นๆ' เป็นค่า default"):
+                    st.session_state[confirm_key] = True
+                    st.rerun()
+        with bc4:
+            disabled = n_sel == 0
+            rej_confirm_key = '_bulk_reject_confirm'
+            if st.session_state.get(rej_confirm_key):
+                if st.button(f"⚠️ ยืนยันปฏิเสธ {n_sel} รายการ",
+                              use_container_width=True,
+                              key="_bulk_reject_do"):
+                    success, fail = db.bulk_reject_equipment(
+                        list(selected),
+                        reason="bulk reject",
+                        admin_name=uname(),
+                    )
+                    st.session_state[sel_key] = set()
+                    st.session_state.pop(rej_confirm_key, None)
+                    st.toast(f"❌ ปฏิเสธ {success} รายการแล้ว", icon="ℹ️")
+                    st.rerun()
+            else:
+                if st.button(f"❌ ปฏิเสธทั้งหมด ({n_sel})",
+                              use_container_width=True,
+                              disabled=disabled,
+                              key="_bulk_reject_btn"):
+                    st.session_state[rej_confirm_key] = True
+                    st.rerun()
+
+        # คำใบ้เมื่อกำลังจะ confirm
+        if st.session_state.get('_bulk_approve_confirm'):
+            st.warning(
+                "⚠️ การอนุมัติแบบเหมาจะใช้ SKU เดิม + หมวด 'อุปกรณ์อื่นๆ'\n\n"
+                "ถ้าต้องการกำหนด SKU/ราคาให้ละเอียด → กดปุ่ม '✅ อนุมัติ' ของแต่ละรายการแทน"
+            )
+        if st.session_state.get('_bulk_reject_confirm'):
+            st.error(f"⚠️ จะปฏิเสธ {n_sel} รายการ — กดยืนยันอีกครั้งเพื่อดำเนินการ")
+
+
 def _render_pending_card(eq):
-    """การ์ด pending equipment 1 รายการ"""
+    """การ์ด pending equipment 1 รายการ + checkbox สำหรับ bulk action"""
+    sel_key = '_bulk_pending_ids'
+    selected = st.session_state.get(sel_key, set())
+
     with st.container(border=True):
-        cols = st.columns([0.6, 3, 2, 1.5, 1.5])
+        cols = st.columns([0.4, 0.6, 3, 2, 1.5, 1.5])
+
+        # Checkbox สำหรับ bulk action
+        with cols[0]:
+            is_checked = eq['id'] in selected
+            new_state = st.checkbox(
+                "เลือก", value=is_checked,
+                key=f"sel_pend_{eq['id']}",
+                label_visibility="collapsed",
+            )
+            if new_state != is_checked:
+                if new_state:
+                    selected.add(eq['id'])
+                else:
+                    selected.discard(eq['id'])
+                st.session_state[sel_key] = selected
+                st.rerun()
 
         # รูป
-        with cols[0]:
+        with cols[1]:
             imgs = eq.get('image_urls') or []
             if eq.get('image_url') and eq['image_url'] not in imgs:
                 imgs.insert(0, eq['image_url'])
@@ -1134,13 +1370,13 @@ def _render_pending_card(eq):
                 st.markdown('<div style="font-size:32px;">✏️</div>',
                               unsafe_allow_html=True)
 
-        with cols[1]:
+        with cols[2]:
             st.markdown(f"**{eq.get('name', '-')}**")
             st.caption(f"📦 หน่วย: {eq.get('unit', 'ชิ้น')} • 📷 {len(imgs)} รูป")
             if eq.get('suggested_notes'):
                 st.caption(f"💬 {eq['suggested_notes']}")
 
-        with cols[2]:
+        with cols[3]:
             st.caption(f"👤 เสนอโดย: {eq.get('suggested_by_name', '-')}")
             sa = eq.get('suggested_at', '')
             if sa:
@@ -1152,13 +1388,13 @@ def _render_pending_card(eq):
                 if po:
                     st.caption(f"🔗 จาก {po.get('po_number', '-')}")
 
-        with cols[3]:
+        with cols[4]:
             if st.button("✅ อนุมัติ", use_container_width=True,
                           type="primary", key=f"app_{eq['id']}"):
                 st.session_state['catalog_approve_id'] = eq['id']
                 st.rerun()
 
-        with cols[4]:
+        with cols[5]:
             confirm_key = f"rej_confirm_{eq['id']}"
             if st.session_state.get(confirm_key):
                 if st.button("⚠️ ยืนยัน", use_container_width=True,
