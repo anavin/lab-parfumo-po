@@ -4,6 +4,7 @@ import streamlit as st
 import pandas as pd
 
 import database as db
+import notify
 from helpers import fmt_date, fmt_dt, is_admin, uid, uname, show_empty_state
 
 
@@ -820,15 +821,25 @@ def render_users():
             c1, c2 = st.columns(2)
             with c1:
                 un = st.text_input("Username *")
-                pw = st.text_input("รหัสผ่าน *", type="password")
+                pw = st.text_input("รหัสผ่านชั่วคราว *", type="password",
+                                     help="user จะถูกบังคับเปลี่ยนรหัสตอน login ครั้งแรก")
                 fn = st.text_input("ชื่อ-นามสกุล *")
             with c2:
                 rl = st.selectbox("Role", list(db.ROLES.keys()),
                                     format_func=lambda x: db.ROLES[x])
-                em = st.text_input("อีเมล", placeholder="สำหรับแจ้งเตือน")
+                em = st.text_input("อีเมล", placeholder="สำหรับส่งอีเมลแจ้งเข้าใช้งาน")
+
+            send_welcome = st.checkbox(
+                "📧 ส่งอีเมลแจ้ง user เพื่อเข้าใช้งานครั้งแรก",
+                value=True,
+                help="ระบบจะส่งอีเมลพร้อม username + รหัสผ่านชั่วคราว + ลิงก์เข้าระบบให้ user",
+            )
+
             if st.form_submit_button("✅ เพิ่ม", type="primary"):
                 if not un or not pw or not fn:
                     st.error("กรุณากรอกข้อมูล")
+                elif send_welcome and not em:
+                    st.error("⚠️ ต้องระบุอีเมลของ user เพื่อส่งคำแจ้ง")
                 else:
                     try:
                         if db.add_user(un, pw, fn, rl, em):
@@ -836,6 +847,42 @@ def render_users():
                             st.toast(f"✅ เพิ่ม {fn} สำเร็จ!", icon="🎉")
                             # Balloons celebration
                             st.balloons()
+
+                            # ส่งอีเมลต้อนรับ
+                            email_status = ""
+                            if send_welcome and em:
+                                try:
+                                    company_info = db.get_company_settings()
+                                    company_name = (
+                                        company_info.get('name_th')
+                                        or company_info.get('name')
+                                        or 'Lab Parfumo'
+                                    )
+                                    role_label = db.ROLES.get(rl, rl)
+                                    sent, msg = notify.send_welcome_email(
+                                        user_email=em,
+                                        user_name=fn,
+                                        username=un,
+                                        password=pw,
+                                        role_label=role_label,
+                                        company_name=company_name,
+                                    )
+                                    if sent:
+                                        st.toast(
+                                            f"📧 ส่งอีเมลถึง {em} แล้ว",
+                                            icon="✅",
+                                        )
+                                        email_status = (
+                                            f"\n- **อีเมลแจ้ง:** ✅ ส่งถึง `{em}` แล้ว"
+                                        )
+                                    else:
+                                        email_status = (
+                                            f"\n- **อีเมลแจ้ง:** ⚠️ ไม่ได้ส่ง — {msg}\n"
+                                            f"  (ตรวจสอบ SMTP config ใน Streamlit Secrets)"
+                                        )
+                                except Exception as e:
+                                    email_status = f"\n- **อีเมลแจ้ง:** ❌ {e}"
+
                             # Success message ใน main area
                             role_label = db.ROLES.get(rl, rl)
                             st.success(
@@ -843,12 +890,12 @@ def render_users():
                                 f"- **ชื่อ:** {fn}\n"
                                 f"- **Username:** `{un}`\n"
                                 f"- **Role:** {role_label}\n"
-                                f"- **อีเมล:** {em or '—'}\n\n"
+                                f"- **อีเมล:** {em or '—'}{email_status}\n\n"
                                 f"⚠️ ครั้งแรกที่ login ระบบจะบังคับเปลี่ยนรหัสผ่าน"
                             )
                             # delay เล็กน้อยให้ user เห็น message ก่อน rerun
                             import time
-                            time.sleep(2)
+                            time.sleep(2.5)
                             st.rerun()
                     except Exception as e:
                         st.error(f"❌ เพิ่มผู้ใช้ไม่สำเร็จ: {e}")
@@ -909,6 +956,15 @@ def render_users():
                         # แสดง status ปัจจุบัน
                         if u.get('must_change_password'):
                             st.caption("⚠️ User นี้ยังไม่เคยเปลี่ยนรหัสเอง")
+
+                    # checkbox ส่งอีเมลตอน reset
+                    send_email_on_reset = st.checkbox(
+                        "📧 ส่งอีเมลแจ้งรหัสใหม่ให้ user",
+                        value=True,
+                        key=f"send_email_{u['id']}",
+                        help="ส่งเฉพาะเมื่อมีการเปลี่ยนรหัสผ่าน",
+                    )
+
                     s1, s2 = st.columns(2)
                     with s1:
                         if st.form_submit_button("💾", type="primary"):
@@ -923,15 +979,49 @@ def render_users():
                                         f"🔐 รีเซ็ตรหัสผ่านของ {u['username']} แล้ว",
                                         icon="✅",
                                     )
+                                    # ส่งอีเมลแจ้งรหัสใหม่
+                                    email_msg = ""
+                                    if send_email_on_reset and em:
+                                        try:
+                                            company_info = db.get_company_settings()
+                                            company_name = (
+                                                company_info.get('name_th')
+                                                or company_info.get('name')
+                                                or 'Lab Parfumo'
+                                            )
+                                            role_label = db.ROLES.get(rl, rl)
+                                            sent, msg = notify.send_welcome_email(
+                                                user_email=em,
+                                                user_name=n,
+                                                username=u['username'],
+                                                password=np_,
+                                                role_label=role_label,
+                                                company_name=company_name,
+                                            )
+                                            if sent:
+                                                st.toast(
+                                                    f"📧 ส่งอีเมลถึง {em} แล้ว",
+                                                    icon="✅",
+                                                )
+                                                email_msg = (
+                                                    f"\n📧 ส่งอีเมลแจ้งรหัสใหม่ถึง `{em}` แล้ว"
+                                                )
+                                            else:
+                                                email_msg = (
+                                                    f"\n⚠️ ส่งอีเมลไม่สำเร็จ — {msg}"
+                                                )
+                                        except Exception as e:
+                                            email_msg = f"\n❌ ส่งอีเมลผิดพลาด: {e}"
+
                                     st.success(
                                         f"✅ **บันทึกสำเร็จ** — "
                                         f"ครั้งหน้า {u['username']} login จะถูกบังคับ"
-                                        f"ให้เปลี่ยนรหัสใหม่เอง"
+                                        f"ให้เปลี่ยนรหัสใหม่เอง{email_msg}"
                                     )
                                 else:
                                     st.toast("✅ บันทึกแล้ว", icon="💾")
                                 import time
-                                time.sleep(1.5)
+                                time.sleep(2)
                             del st.session_state[f'edu_{u["id"]}']
                             st.rerun()
                     with s2:
