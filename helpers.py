@@ -1,9 +1,66 @@
-"""helpers.py - shared utilities สำหรับทุก pages"""
-from datetime import datetime, date
+"""helpers.py - shared utilities สำหรับทุก pages
+
+⭐ UPDATED:
+- เพิ่ม esc() สำหรับ HTML escape (anti-XSS)
+- เพิ่ม timezone helpers (Bangkok time)
+- เพิ่ม Status constants
+- เพิ่ม config constants
+"""
+from datetime import datetime, date, timezone, timedelta
+import html as _html
+import logging
 
 import streamlit as st
 
 
+# ==================================================================
+# Config (เก็บไว้ที่เดียว — import ที่อื่น)
+# ==================================================================
+SESSION_TIMEOUT_MIN = 60
+SESSION_COOKIE_MAX_AGE_DAYS = 7
+LOGIN_LOCKOUT_MINUTES = 15
+LOGIN_MAX_ATTEMPTS = 5
+PASSWORD_MIN_LENGTH = 8
+
+BANGKOK_TZ = timezone(timedelta(hours=7))
+
+
+# ==================================================================
+# Logging setup (ใช้ทั้ง app)
+# ==================================================================
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] %(levelname)s %(name)s: %(message)s',
+)
+log = logging.getLogger("po_pro")
+
+
+# ==================================================================
+# HTML escape (anti-XSS) — IMPORTANT
+# ==================================================================
+def esc(s):
+    """Escape string เพื่อใส่ใน HTML อย่างปลอดภัย
+    ใช้ทุกครั้งที่นำ user input ไปใส่ใน f-string ที่ render เป็น HTML
+    
+    ตัวอย่าง:
+        ❌ st.markdown(f"<div>{user_name}</div>", unsafe_allow_html=True)
+        ✅ st.markdown(f"<div>{esc(user_name)}</div>", unsafe_allow_html=True)
+    """
+    if s is None:
+        return ""
+    return _html.escape(str(s), quote=True)
+
+
+def esc_attr(s):
+    """Escape สำหรับใส่ใน HTML attribute (รวมเครื่องหมายคำพูด)"""
+    if s is None:
+        return ""
+    return _html.escape(str(s), quote=True)
+
+
+# ==================================================================
+# Date/time formatters
+# ==================================================================
 def fmt_date(d):
     if not d:
         return "-"
@@ -43,6 +100,35 @@ def days_until(d_str):
         return None
 
 
+# ==================================================================
+# Timezone helpers (Bangkok)
+# ==================================================================
+def now_bkk():
+    """ปัจจุบันใน Bangkok time (timezone-aware)"""
+    return datetime.now(BANGKOK_TZ)
+
+
+def now_utc():
+    """ปัจจุบันใน UTC (timezone-aware) — ใช้เก็บใน DB"""
+    return datetime.now(timezone.utc)
+
+
+def parse_iso_to_bkk(s):
+    """แปลง ISO string เป็น Bangkok time"""
+    if not s:
+        return None
+    try:
+        dt = datetime.fromisoformat(s.replace('Z', '+00:00'))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(BANGKOK_TZ)
+    except Exception:
+        return None
+
+
+# ==================================================================
+# User context helpers
+# ==================================================================
 def is_admin():
     u = st.session_state.get('user')
     return bool(u and u.get('role') == 'admin')
@@ -67,43 +153,62 @@ def urole():
     return u.get('role', 'requester')
 
 
-# Status helpers
+# ==================================================================
+# Status constants & helpers
+# ==================================================================
+class Status:
+    """PO status constants — ใช้แทน magic strings"""
+    PENDING = "รอจัดซื้อดำเนินการ"
+    ORDERED = "สั่งซื้อแล้ว"
+    SHIPPING = "กำลังขนส่ง"
+    RECEIVED = "รับของแล้ว"
+    PROBLEM = "มีปัญหา"
+    COMPLETE = "เสร็จสมบูรณ์"
+    CANCELLED = "ยกเลิก"
+
+    ALL = (PENDING, ORDERED, SHIPPING, RECEIVED, PROBLEM, COMPLETE, CANCELLED)
+    ACTIVE = (PENDING, ORDERED, SHIPPING)
+    PENDING_RECEIPT = (ORDERED, SHIPPING)
+    DONE = (COMPLETE, CANCELLED)
+    NEEDS_RECEIPT = (RECEIVED, PROBLEM)
+
+
 STATUS_COLOR = {
-    "รอจัดซื้อดำเนินการ": "#888",
-    "สั่งซื้อแล้ว": "#0F6E56",
-    "กำลังขนส่ง": "#BA7517",
-    "รับของแล้ว": "#1D9E75",
-    "มีปัญหา": "#A32D2D",
-    "เสร็จสมบูรณ์": "#27500A",
-    "ยกเลิก": "#A32D2D",
+    Status.PENDING: "#888",
+    Status.ORDERED: "#0F6E56",
+    Status.SHIPPING: "#BA7517",
+    Status.RECEIVED: "#1D9E75",
+    Status.PROBLEM: "#A32D2D",
+    Status.COMPLETE: "#27500A",
+    Status.CANCELLED: "#A32D2D",
 }
 
 STATUS_EMOJI = {
-    "รอจัดซื้อดำเนินการ": "📝",
-    "สั่งซื้อแล้ว": "✅",
-    "กำลังขนส่ง": "🚚",
-    "รับของแล้ว": "📦",
-    "มีปัญหา": "⚠️",
-    "เสร็จสมบูรณ์": "✓",
-    "ยกเลิก": "❌",
+    Status.PENDING: "📝",
+    Status.ORDERED: "✅",
+    Status.SHIPPING: "🚚",
+    Status.RECEIVED: "📦",
+    Status.PROBLEM: "⚠️",
+    Status.COMPLETE: "✓",
+    Status.CANCELLED: "❌",
 }
 
-# B2B pill class mapping
 STATUS_PILL_CLASS = {
-    "รอจัดซื้อดำเนินการ": "pending",
-    "สั่งซื้อแล้ว": "ordered",
-    "กำลังขนส่ง": "shipping",
-    "รับของแล้ว": "received",
-    "มีปัญหา": "problem",
-    "เสร็จสมบูรณ์": "done",
-    "ยกเลิก": "cancel",
+    Status.PENDING: "pending",
+    Status.ORDERED: "ordered",
+    Status.SHIPPING: "shipping",
+    Status.RECEIVED: "received",
+    Status.PROBLEM: "problem",
+    Status.COMPLETE: "done",
+    Status.CANCELLED: "cancel",
 }
 
 
 def status_pill_html(status):
-    """สร้าง HTML pill สำหรับ status (B2B style)"""
+    """สร้าง HTML pill สำหรับ status (B2B style)
+    ⭐ Status เป็น constant ที่ controlled แล้ว — escape ป้องกันไว้เผื่อ"""
     cls = STATUS_PILL_CLASS.get(status, "cancel")
-    return f'<span class="lp-pill {cls}">{status}</span>'
+    return f'<span class="lp-pill {cls}">{esc(status)}</span>'
 
 
 def show_status_pill(status):
@@ -120,7 +225,7 @@ def days_indicator(d_str, status):
     """คืน HTML แสดงสถานะวันใกล้/เลยกำหนด หรือ None"""
     if not d_str:
         return None
-    if status not in ('สั่งซื้อแล้ว', 'กำลังขนส่ง'):
+    if status not in (Status.ORDERED, Status.SHIPPING):
         return None
     days = days_until(d_str)
     if days is None:
@@ -135,12 +240,14 @@ def days_indicator(d_str, status):
 
 def show_empty_state(icon, title, text, button_label=None, button_action=None):
     """แสดง empty state สวยๆ — มีไอคอน + ข้อความ + ปุ่ม CTA (optional)
-    button_action: tuple (mode, optional_extra_state_dict) สำหรับเปลี่ยนหน้า"""
+    button_action: tuple (mode, optional_extra_state_dict) สำหรับเปลี่ยนหน้า
+    
+    ⭐ UPDATED: escape user-controllable params"""
     st.markdown(f"""
     <div class="empty-state">
-        <div class="empty-icon">{icon}</div>
-        <div class="empty-title">{title}</div>
-        <div class="empty-text">{text}</div>
+        <div class="empty-icon">{esc(icon)}</div>
+        <div class="empty-title">{esc(title)}</div>
+        <div class="empty-text">{esc(text)}</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -155,3 +262,30 @@ def show_empty_state(icon, title, text, button_label=None, button_action=None):
                     for k, v in extra[0].items():
                         st.session_state[k] = v
                 st.rerun()
+
+
+# ==================================================================
+# Money formatting
+# ==================================================================
+def fmt_money(amount, decimals=2):
+    """Format ตัวเลขเป็นเงินบาท"""
+    try:
+        return f"฿{float(amount):,.{decimals}f}"
+    except (TypeError, ValueError):
+        return "฿0.00"
+
+
+def safe_float(v, default=0.0):
+    """แปลงเป็น float แบบปลอดภัย"""
+    try:
+        return float(v) if v is not None else default
+    except (TypeError, ValueError):
+        return default
+
+
+def safe_int(v, default=0):
+    """แปลงเป็น int แบบปลอดภัย"""
+    try:
+        return int(float(v)) if v is not None else default
+    except (TypeError, ValueError):
+        return default

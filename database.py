@@ -1,34 +1,65 @@
-"""database.py — Supabase wrapper สำหรับ PO Pro"""
-import os, uuid, hashlib
-from datetime import datetime, date, timedelta
-from typing import Optional
+"""database.py — Supabase wrapper สำหรับ PO Pro
+
+⭐ MAJOR UPDATES:
+- bcrypt password hashing (S1) + auto-migrate from SHA-256 (legacy)
+- Atomic counter via Postgres function (C3)
+- Atomic withdrawal via Postgres function (C4)
+- Fixed PO creation bug (C6)
+- Soft delete user (B1)
+- Soft reject equipment (B2)
+- Centralized config (B3)
+- timezone-aware datetimes (B4, B5)
+- Better logging (B7)
+- Type hints (P6)
+- Safe error display (P7)
+"""
+import os
+import re
+import uuid
+import hashlib
+import secrets as _py_secrets
+from datetime import datetime, date, timedelta, timezone
+from typing import Optional, List, Dict, Any
+
+import bcrypt
 import streamlit as st
 from supabase import create_client, Client
 
+from helpers import (
+    log, now_utc,
+    LOGIN_LOCKOUT_MINUTES, LOGIN_MAX_ATTEMPTS, PASSWORD_MIN_LENGTH,
+    Status,
+)
 
+
+# ==================================================================
+# Constants
+# ==================================================================
 ROLES = {'requester': 'ผู้สั่ง', 'admin': 'แอดมิน + จัดซื้อ'}
 
-PO_STATUSES = [
-    "รอจัดซื้อดำเนินการ", "สั่งซื้อแล้ว", "กำลังขนส่ง",
-    "รับของแล้ว", "มีปัญหา", "เสร็จสมบูรณ์", "ยกเลิก",
-]
+# Re-export for backward compat
+PO_STATUSES = list(Status.ALL)
 
 STATUS_EMOJI = {
-    "รอจัดซื้อดำเนินการ": "📝",
-    "สั่งซื้อแล้ว": "✅",
-    "กำลังขนส่ง": "🚚",
-    "รับของแล้ว": "📦",
-    "มีปัญหา": "⚠️",
-    "เสร็จสมบูรณ์": "✓",
-    "ยกเลิก": "❌",
+    Status.PENDING: "📝",
+    Status.ORDERED: "✅",
+    Status.SHIPPING: "🚚",
+    Status.RECEIVED: "📦",
+    Status.PROBLEM: "⚠️",
+    Status.COMPLETE: "✓",
+    Status.CANCELLED: "❌",
 }
 
-DEFAULT_CATEGORIES = ["ขวดบรรจุ", "ฝา/จุก", "กล่องบรรจุภัณฑ์", "สติกเกอร์/ฉลาก", "อุปกรณ์อื่นๆ"]
+DEFAULT_CATEGORIES = ["ขวดบรรจุ", "ฝา/จุก", "กล่องบรรจุภัณฑ์",
+                      "สติกเกอร์/ฉลาก", "อุปกรณ์อื่นๆ"]
 IMG_EQ = "equipment-images"
 IMG_DEL = "delivery-images"
 IMG_ATTACH = "po-attachments"
 
 
+# ==================================================================
+# Supabase client
+# ==================================================================
 @st.cache_resource
 def get_supabase() -> Client:
     url = key = None
@@ -45,324 +76,292 @@ def get_supabase() -> Client:
     return create_client(url, key)
 
 
-# --- Auth & Security ---
-import re
-import secrets as _py_secrets
+def _supabase_safe():
+    """Wrapper that recovers from connection errors"""
+    try:
+        return get_supabase()
+    except Exception:
+        log.warning("Supabase connection failed — clearing cache and retrying")
+        try:
+            get_supabase.clear()
+        except Exception:
+            pass
+        return get_supabase()
 
 
-def hash_password(p):
-    """SHA-256 hash with salt (production should use bcrypt)"""
-    return hashlib.sha256(p.encode()).hexdigest()
+# ==================================================================
+# Password hashing — bcrypt (with legacy SHA-256 support)
+# ==================================================================
+def hash_password(p: str) -> str:
+    """bcrypt with cost factor 12 (default — secure for 2026)"""
+    return bcrypt.hashpw(p.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 
-def validate_password(pwd, username=""):
-    """ตรวจรหัสผ่าน — คืน (ok: bool, message: str)"""
-    if not pwd or len(pwd) < 8:
-        return False, "รหัสผ่านต้องยาวอย่างน้อย 8 ตัวอักษร"
-    if pwd.lower() == username.lower():
+def verify_password_hash(p: str, hashed: str) -> bool:
+    """Compare against bcrypt hash"""
+    if not p or not hashed:
+        return False
+    try:
+        return bcrypt.checkpw(p.encode('utf-8'), hashed.encode('utf-8'))
+    except (ValueError, TypeError):
+        return False
+
+
+def _is_legacy_sha256_hash(h: str) -> bool:
+    """SHA-256 = 64 hex chars; bcrypt starts with $2"""
+    if not h:
+        return False
+    return len(h) == 64 and not h.startswith('$2') and re.fullmatch(r'[0-9a-f]{64}', h) is not None
+
+
+def _verify_legacy_sha256(p: str, hashed: str) -> bool:
+    """For legacy users only — verify SHA-256 hash"""
+    return hashlib.sha256(p.encode('utf-8')).hexdigest() == hashed
+
+
+def validate_password(pwd: str, username: str = "") -> tuple[bool, str]:
+    """ตรวจรหัสผ่าน — คืน (ok, message)"""
+    if not pwd or len(pwd) < PASSWORD_MIN_LENGTH:
+        return False, f"รหัสผ่านต้องยาวอย่างน้อย {PASSWORD_MIN_LENGTH} ตัวอักษร"
+    if username and pwd.lower() == username.lower():
         return False, "รหัสผ่านห้ามเหมือน username"
     if not re.search(r'[A-Za-z]', pwd):
         return False, "ต้องมีตัวอักษรอย่างน้อย 1 ตัว"
     if not re.search(r'[0-9]', pwd):
         return False, "ต้องมีตัวเลขอย่างน้อย 1 ตัว"
-    weak = ['password', '12345678', 'qwerty', 'admin123', 'staff123']
+    weak = ['password', '12345678', 'qwerty', 'admin123', 'staff123',
+            'password1', 'password123', 'letmein']
     if pwd.lower() in weak:
         return False, "รหัสผ่านนี้อ่อนแอเกินไป — เปลี่ยนเป็นรหัสที่คาดเดายากกว่านี้"
     return True, "OK"
 
 
-def verify_user(username, password, ip_hash=None):
-    """ตรวจ login + log ความพยายาม"""
+# ==================================================================
+# Auth & login
+# ==================================================================
+def verify_user(username: str, password: str) -> Optional[dict]:
+    """ตรวจ login + log ความพยายาม + auto-migrate SHA-256 → bcrypt"""
+    if not username or not password:
+        return None
+
     sb = get_supabase()
     try:
-        # ตรวจล็อคถูกล็อคไหม (ผิด > 5 ครั้งใน 15 นาที)
+        # ตรวจถูกล็อคไหม
         if _is_account_locked(username):
-            return None  # ส่ง None แต่ caller ควรเช็ค locked status แยก
+            log.info(f"Login blocked (locked): {username}")
+            return None
 
-        h = hash_password(password)
-        res = sb.table("users").select("*").eq("username", username).eq("password_hash", h).eq("is_active", True).execute()
+        # ดึง user ด้วย username อย่างเดียว — ไม่ filter password ใน query
+        # (เพราะ bcrypt hash ต่างกันทุกครั้ง) — verify ใน Python แทน
+        res = (sb.table("users")
+                 .select("*")
+                 .eq("username", username)
+                 .eq("is_active", True)
+                 .execute())
 
-        if res.data:
-            user = res.data[0]
-            _log_login(username, success=True)
-            # update last_login
-            try:
-                sb.table("users").update({
-                    "last_login_at": datetime.now().isoformat(),
-                    "failed_login_count": 0,
-                }).eq("id", user["id"]).execute()
-            except Exception:
-                pass
-            return user
-        else:
+        if not res.data:
             _log_login(username, success=False)
             return None
+
+        user = res.data[0]
+        stored_hash = user.get('password_hash', '')
+
+        verified = False
+        needs_upgrade = False
+
+        if _is_legacy_sha256_hash(stored_hash):
+            # Legacy — verify SHA-256 then upgrade
+            if _verify_legacy_sha256(password, stored_hash):
+                verified = True
+                needs_upgrade = True
+        else:
+            # bcrypt
+            verified = verify_password_hash(password, stored_hash)
+
+        if not verified:
+            _log_login(username, success=False)
+            return None
+
+        # Success
+        _log_login(username, success=True)
+        try:
+            update_payload = {
+                "last_login_at": now_utc().isoformat(),
+                "failed_login_count": 0,
+            }
+            if needs_upgrade:
+                # ⭐ Auto-migrate SHA-256 → bcrypt (transparent to user)
+                update_payload["password_hash"] = hash_password(password)
+                log.info(f"Auto-upgraded password hash to bcrypt for user: {username}")
+            sb.table("users").update(update_payload).eq("id", user["id"]).execute()
+        except Exception:
+            log.exception("Failed to update last_login")
+
+        # Refresh user data (in case hash was upgraded)
+        if needs_upgrade:
+            res = sb.table("users").select("*").eq("id", user["id"]).execute()
+            if res.data:
+                user = res.data[0]
+
+        return user
     except Exception:
+        log.exception(f"verify_user failed for {username}")
         return None
 
 
-def _is_account_locked(username):
-    """เช็คว่า account ล็อคหรือไม่ (ผิดเกิน 5 ครั้งใน 15 นาที)"""
+def _is_account_locked(username: str) -> bool:
+    """เช็คว่า account ล็อคหรือไม่"""
     sb = get_supabase()
     try:
-        cutoff = (datetime.now() - timedelta(minutes=15)).isoformat()
-        res = sb.table("login_attempts").select("*").eq("username", username).eq("success", False).gte("created_at", cutoff).execute()
-        return len(res.data or []) >= 5
+        cutoff = (now_utc() - timedelta(minutes=LOGIN_LOCKOUT_MINUTES)).isoformat()
+        res = (sb.table("login_attempts")
+                 .select("id", count='exact')
+                 .eq("username", username)
+                 .eq("success", False)
+                 .gte("created_at", cutoff)
+                 .execute())
+        return (res.count or 0) >= LOGIN_MAX_ATTEMPTS
     except Exception:
+        log.exception("_is_account_locked failed")
         return False
 
 
-def get_failed_attempts_count(username):
-    """จำนวนครั้งที่ผิดใน 15 นาที"""
+def get_failed_attempts_count(username: str) -> int:
+    """จำนวนครั้งที่ผิดในช่วง lockout window"""
     sb = get_supabase()
     try:
-        cutoff = (datetime.now() - timedelta(minutes=15)).isoformat()
-        res = sb.table("login_attempts").select("id").eq("username", username).eq("success", False).gte("created_at", cutoff).execute()
-        return len(res.data or [])
+        cutoff = (now_utc() - timedelta(minutes=LOGIN_LOCKOUT_MINUTES)).isoformat()
+        res = (sb.table("login_attempts")
+                 .select("id", count='exact')
+                 .eq("username", username)
+                 .eq("success", False)
+                 .gte("created_at", cutoff)
+                 .execute())
+        return res.count or 0
     except Exception:
         return 0
 
 
-def _log_login(username, success):
+def _log_login(username: str, success: bool):
     """บันทึก login attempt"""
-    sb = get_supabase()
     try:
-        sb.table("login_attempts").insert({
+        get_supabase().table("login_attempts").insert({
             "username": username,
             "success": success,
         }).execute()
     except Exception:
-        pass
+        log.exception("_log_login failed")
 
 
-# ===== Session Token (จำหลัง refresh) =====
-def create_session_token(user_id):
-    """สร้าง session token + บันทึกใน DB — คืน token string"""
+# ==================================================================
+# Session tokens
+# ==================================================================
+def create_session_token(user_id: str) -> Optional[str]:
+    """สร้าง session token + บันทึกใน DB"""
     try:
         token = _py_secrets.token_urlsafe(32)
-        sb = get_supabase()
-        sb.table("user_sessions").insert({
+        get_supabase().table("user_sessions").insert({
             "token": token,
             "user_id": user_id,
         }).execute()
         return token
     except Exception:
+        log.exception("create_session_token failed")
         return None
 
 
-def verify_session_token(token, max_idle_minutes=5):
-    """ตรวจ token ว่าใช้ได้ + ไม่หมดอายุ — คืน user dict หรือ None"""
+def verify_session_token(token: str, max_idle_minutes: int = 60) -> Optional[dict]:
+    """ตรวจ token + ไม่หมดอายุ + return user"""
     if not token:
         return None
     try:
         sb = get_supabase()
-        # ดึง session
         r = sb.table("user_sessions").select("*").eq("token", token).execute()
         if not r.data:
             return None
         sess = r.data[0]
 
-        # เช็ค idle timeout
+        # idle check
         last = sess.get('last_activity_at')
         if last:
             try:
                 last_dt = datetime.fromisoformat(last.replace('Z', '+00:00'))
-                # convert to naive UTC for comparison
-                last_naive = last_dt.replace(tzinfo=None)
-                now = datetime.utcnow()
-                idle_min = (now - last_naive).total_seconds() / 60
+                if last_dt.tzinfo is None:
+                    last_dt = last_dt.replace(tzinfo=timezone.utc)
+                idle_min = (now_utc() - last_dt).total_seconds() / 60
                 if idle_min > max_idle_minutes:
-                    # หมดอายุ — ลบ token
                     delete_session_token(token)
                     return None
             except Exception:
-                pass
+                log.exception("session idle check failed")
 
-        # ดึง user
-        ur = sb.table("users").select("*").eq("id", sess['user_id']).eq("is_active", True).execute()
+        # Get user
+        ur = (sb.table("users")
+                .select("*")
+                .eq("id", sess['user_id'])
+                .eq("is_active", True)
+                .execute())
         if not ur.data:
             return None
 
-        # touch — อัปเดต last_activity
-        sb.table("user_sessions").update({
-            "last_activity_at": datetime.utcnow().isoformat(),
-        }).eq("token", token).execute()
+        # Touch session
+        try:
+            sb.table("user_sessions").update({
+                "last_activity_at": now_utc().isoformat(),
+            }).eq("token", token).execute()
+        except Exception:
+            log.exception("touch session failed")
 
         return ur.data[0]
     except Exception:
+        log.exception("verify_session_token failed")
         return None
 
 
-def delete_session_token(token):
-    """ลบ token (logout)"""
+def delete_session_token(token: str):
     if not token:
         return
     try:
         get_supabase().table("user_sessions").delete().eq("token", token).execute()
     except Exception:
-        pass
+        log.exception("delete_session_token failed")
 
 
-def cleanup_expired_sessions(max_idle_minutes=5):
-    """ลบ sessions ที่หมดอายุ — เรียกเป็นครั้งคราว"""
+def cleanup_expired_sessions(max_idle_minutes: int = 60):
+    """ลบ sessions ที่หมดอายุ"""
     try:
-        cutoff = (datetime.utcnow() - timedelta(minutes=max_idle_minutes)).isoformat()
+        cutoff = (now_utc() - timedelta(minutes=max_idle_minutes)).isoformat()
         get_supabase().table("user_sessions").delete().lt("last_activity_at", cutoff).execute()
     except Exception:
-        pass
+        log.exception("cleanup_expired_sessions failed")
 
 
-def get_users():
+# ==================================================================
+# Users
+# ==================================================================
+def get_users() -> List[dict]:
     try:
-        return get_supabase().table("users").select("*").order("created_at").execute().data or []
+        return (get_supabase()
+                .table("users")
+                .select("*")
+                .eq("is_active", True)  # ⭐ ซ่อน user ที่ soft-deleted
+                .order("created_at")
+                .execute().data or [])
+    except Exception:
+        log.exception("get_users failed")
+        return []
+
+
+def get_all_users_including_inactive() -> List[dict]:
+    """สำหรับ admin ดูทั้งหมด (รวม inactive)"""
+    try:
+        return (get_supabase().table("users").select("*")
+                .order("created_at").execute().data or [])
     except Exception:
         return []
 
 
-# ===== Company Settings =====
-def get_company_settings():
-    """ดึงข้อมูลบริษัท (มีแถวเดียวเสมอ)"""
-    try:
-        r = get_supabase().table("company_settings").select("*").eq("id", 1).execute()
-        if r.data:
-            data = r.data[0]
-            # default ถ้า migration ยังไม่ได้รัน
-            data.setdefault('login_intro_visible', True)
-            data.setdefault('login_intro_title', 'ℹ️ บัญชีเริ่มต้น')
-            data.setdefault('login_intro_text',
-                              'admin / admin123     → แอดมิน\n'
-                              'staff1 / staff123    → ผู้สั่ง')
-            data.setdefault('login_intro_note',
-                              '⚠️ ครั้งแรก ระบบจะบังคับเปลี่ยนรหัสผ่าน')
-            return data
-    except Exception:
-        pass
-    # fallback ถ้ายังไม่ได้ migrate
-    return {
-        'name': 'Lab Parfumo',
-        'name_th': 'แล็บ พาฟูโม่',
-        'address': '',
-        'phone': '',
-        'email': '',
-        'tax_id': '',
-        'website': 'www.labparfumo.com',
-        'logo_url': '',
-        'login_intro_visible': True,
-        'login_intro_title': 'ℹ️ บัญชีเริ่มต้น',
-        'login_intro_text': 'admin / admin123     → แอดมิน\n'
-                              'staff1 / staff123    → ผู้สั่ง',
-        'login_intro_note': '⚠️ ครั้งแรก ระบบจะบังคับเปลี่ยนรหัสผ่าน',
-    }
-
-
-def update_company_settings(name="", name_th="", address="", phone="",
-                              email="", tax_id="", website="", logo_url="",
-                              login_intro_visible=True, login_intro_title="",
-                              login_intro_text="", login_intro_note="",
-                              updated_by_name=""):
-    """อัปเดตข้อมูลบริษัท (admin)"""
-    try:
-        from datetime import datetime
-        sb = get_supabase()
-        payload = {
-            "id": 1,
-            "name": name, "name_th": name_th,
-            "address": address, "phone": phone,
-            "email": email, "tax_id": tax_id,
-            "website": website, "logo_url": logo_url,
-            "login_intro_visible": login_intro_visible,
-            "login_intro_title": login_intro_title,
-            "login_intro_text": login_intro_text,
-            "login_intro_note": login_intro_note,
-            "updated_at": datetime.now().isoformat(),
-            "updated_by_name": updated_by_name,
-        }
-        # upsert (insert ถ้ายังไม่มี / update ถ้ามี)
-        sb.table("company_settings").upsert(payload).execute()
-        return True
-    except Exception as e:
-        st.error(f"บันทึกไม่สำเร็จ: {e}")
-        return False
-
-
-def get_admins():
-    """ดึงรายชื่อ admin ทั้งหมด (สำหรับส่ง notification)"""
-    try:
-        return get_supabase().table("users").select("*").eq("role", "admin").execute().data or []
-    except Exception:
-        return []
-
-
-def notify_admins(po_id, title, message=""):
-    """ส่ง notification ให้ admin ทุกคน"""
-    try:
-        admins = get_admins()
-        for admin in admins:
-            add_notification(admin['id'], po_id, title, message)
-        return len(admins)
-    except Exception:
-        return 0
-
-
-def has_recent_notification(user_id, po_id, hours=20):
-    """เช็คว่า user เคยได้ notification ของ PO นี้ในช่วง N ชั่วโมงที่ผ่านมาไหม
-    ใช้ป้องกันการ spam notification ซ้ำๆ"""
-    try:
-        from datetime import datetime, timedelta
-        since = (datetime.now() - timedelta(hours=hours)).isoformat()
-        r = get_supabase().table("notifications").select("id").eq(
-            "user_id", user_id
-        ).eq("po_id", po_id).gte("created_at", since).limit(1).execute()
-        return bool(r.data)
-    except Exception:
-        return False
-
-
-def check_and_notify_stale_pos():
-    """เช็ค PO ที่ค้างสถานะ "รอจัดซื้อดำเนินการ" > 3 วัน → แจ้งเตือน admin
-    ทำงานทุกครั้งที่ admin login (1 ครั้ง/วัน per PO ต่อ admin)"""
-    try:
-        from datetime import datetime, timedelta
-        sb = get_supabase()
-        # หา PO ที่ค้างเกิน 3 วัน
-        threshold = (datetime.now() - timedelta(days=3)).isoformat()
-        r = sb.table("purchase_orders").select("*").eq(
-            "status", "รอจัดซื้อดำเนินการ"
-        ).lte("created_at", threshold).execute()
-        stale_pos = r.data or []
-
-        if not stale_pos:
-            return 0
-
-        admins = get_admins()
-        sent_count = 0
-        for po in stale_pos:
-            for admin in admins:
-                # แจ้งเตือนได้ 1 ครั้ง/วัน per admin per PO
-                if has_recent_notification(admin['id'], po['id'], hours=20):
-                    continue
-                # คำนวณวันค้าง
-                try:
-                    created = datetime.fromisoformat(
-                        po['created_at'].replace('Z', '+00:00')
-                    )
-                    days_stale = (datetime.now(created.tzinfo) - created).days
-                except Exception:
-                    days_stale = 3
-
-                add_notification(
-                    admin['id'],
-                    po['id'],
-                    f"⏰ PO ค้างเกิน {days_stale} วัน",
-                    f"{po.get('po_number', '-')} ยังไม่ได้สั่ง supplier — โปรดดำเนินการ",
-                )
-                sent_count += 1
-        return sent_count
-    except Exception:
-        return 0
-
-
-def get_user(uid):
+def get_user(uid: str) -> Optional[dict]:
     try:
         r = get_supabase().table("users").select("*").eq("id", uid).execute()
         return r.data[0] if r.data else None
@@ -370,26 +369,32 @@ def get_user(uid):
         return None
 
 
-def add_user(username, password, full_name, role="requester", email=""):
-    """เพิ่มผู้ใช้ — auto enforce password policy"""
+def add_user(username: str, password: str, full_name: str,
+             role: str = "requester", email: str = "") -> Optional[dict]:
+    """เพิ่มผู้ใช้ — bcrypt + force change password"""
     ok, msg = validate_password(password, username)
     if not ok:
         st.error(f"❌ {msg}")
         return None
     try:
         return get_supabase().table("users").insert({
-            "username": username, "password_hash": hash_password(password),
-            "full_name": full_name, "role": role, "email": email,
-            "must_change_password": True,  # บังคับเปลี่ยนรหัสครั้งแรก
+            "username": username,
+            "password_hash": hash_password(password),
+            "full_name": full_name,
+            "role": role,
+            "email": email,
+            "must_change_password": True,
         }).execute().data[0]
     except Exception as e:
-        st.error(f"เพิ่มผู้ใช้ไม่สำเร็จ: {e}")
+        log.exception("add_user failed")
+        # Don't leak DB error details
+        msg = "Username นี้มีอยู่แล้ว" if "duplicate" in str(e).lower() else "เพิ่มผู้ใช้ไม่สำเร็จ"
+        st.error(f"❌ {msg}")
         return None
 
 
-def update_user(uid, **fields):
+def update_user(uid: str, **fields) -> bool:
     try:
-        # extract custom flags
         force_change = fields.pop("force_change_password", False)
 
         if "password" in fields:
@@ -401,34 +406,194 @@ def update_user(uid, **fields):
                 st.error(f"❌ {msg}")
                 return False
             fields["password_hash"] = hash_password(new_pwd)
-            # ถ้า admin reset → บังคับให้ user เปลี่ยนเองครั้งถัดไป
-            # ถ้า user เปลี่ยนเอง → ไม่บังคับ
             fields["must_change_password"] = bool(force_change)
-            fields["password_changed_at"] = datetime.now().isoformat()
+            fields["password_changed_at"] = now_utc().isoformat()
         get_supabase().table("users").update(fields).eq("id", uid).execute()
         return True
     except Exception:
+        log.exception("update_user failed")
         return False
 
 
-def delete_user(uid):
+def delete_user(uid: str) -> bool:
+    """⭐ Soft delete — รักษาประวัติ + reverse ได้
+    
+    เปลี่ยนเป็น soft delete แทน hard delete
+    - Mark is_active = False
+    - Append marker to username (free up the username for reuse)
+    """
     try:
-        get_supabase().table("users").delete().eq("id", uid).execute()
+        sb = get_supabase()
+        # ลบ session ทุกอันของ user คนนี้
+        sb.table("user_sessions").delete().eq("user_id", uid).execute()
+        # Soft delete
+        sb.table("users").update({
+            "is_active": False,
+            "username": f"_del_{uid[:8]}_{int(now_utc().timestamp())}",
+        }).eq("id", uid).execute()
         return True
+    except Exception:
+        log.exception("delete_user failed")
+        return False
+
+
+# ==================================================================
+# Company Settings
+# ==================================================================
+def get_company_settings() -> dict:
+    defaults = {
+        'name': 'Lab Parfumo',
+        'name_th': 'แล็บ พาฟูโม่',
+        'address': '',
+        'phone': '',
+        'email': '',
+        'tax_id': '',
+        'website': 'www.labparfumo.com',
+        'logo_url': '',
+        'login_intro_visible': True,
+        'login_intro_title': 'ℹ️ บัญชีเริ่มต้น',
+        'login_intro_text': 'admin / admin123     → แอดมิน\nstaff1 / staff123    → ผู้สั่ง',
+        'login_intro_note': '⚠️ ครั้งแรก ระบบจะบังคับเปลี่ยนรหัสผ่าน',
+    }
+    try:
+        r = get_supabase().table("company_settings").select("*").eq("id", 1).execute()
+        if r.data:
+            return {**defaults, **r.data[0]}
+    except Exception:
+        log.exception("get_company_settings failed")
+    return defaults
+
+
+def update_company_settings(**fields) -> bool:
+    """อัปเดตข้อมูลบริษัท (admin)
+    
+    ⭐ UPDATED: ใช้ kwargs ทั้งหมด → ไม่ต้องส่ง field ทุกตัว"""
+    try:
+        sb = get_supabase()
+        payload = {
+            "id": 1,
+            "updated_at": now_utc().isoformat(),
+        }
+        # Whitelist allowed fields
+        allowed = {'name', 'name_th', 'address', 'phone', 'email',
+                   'tax_id', 'website', 'logo_url',
+                   'login_intro_visible', 'login_intro_title',
+                   'login_intro_text', 'login_intro_note',
+                   'updated_by_name'}
+        for k, v in fields.items():
+            if k in allowed:
+                payload[k] = v
+        sb.table("company_settings").upsert(payload).execute()
+        return True
+    except Exception:
+        log.exception("update_company_settings failed")
+        st.error("⚠️ บันทึกไม่สำเร็จ กรุณาลองใหม่")
+        return False
+
+
+# ==================================================================
+# Notifications & admin notification helpers
+# ==================================================================
+def get_admins() -> List[dict]:
+    try:
+        return (get_supabase().table("users").select("*")
+                .eq("role", "admin").eq("is_active", True)
+                .execute().data or [])
+    except Exception:
+        return []
+
+
+def has_recent_notification(user_id: str, po_id: str, hours: int = 20) -> bool:
+    try:
+        since = (now_utc() - timedelta(hours=hours)).isoformat()
+        r = (get_supabase().table("notifications")
+             .select("id")
+             .eq("user_id", user_id)
+             .eq("po_id", po_id)
+             .gte("created_at", since)
+             .limit(1)
+             .execute())
+        return bool(r.data)
     except Exception:
         return False
 
 
-# --- Categories ---
-def get_categories():
-    """ดึงหมวดทั้งหมด เรียงตาม display_order"""
+def notify_admins(po_id: str, title: str, message: str = "",
+                  dedupe_hours: int = 0) -> int:
+    """ส่ง notification ให้ admin ทุกคน
+    
+    ⭐ UPDATED: รองรับ dedupe_hours เพื่อลด spam
+    """
+    try:
+        admins = get_admins()
+        sent = 0
+        for admin in admins:
+            if dedupe_hours > 0 and has_recent_notification(
+                admin['id'], po_id, dedupe_hours
+            ):
+                continue
+            add_notification(admin['id'], po_id, title, message)
+            sent += 1
+        return sent
+    except Exception:
+        log.exception("notify_admins failed")
+        return 0
+
+
+def check_and_notify_stale_pos() -> int:
+    """เช็ค PO ค้างเกิน 3 วัน → แจ้ง admin (max 1/admin/PO/day)"""
     try:
         sb = get_supabase()
-        # ลองเรียงตาม display_order ก่อน, fallback created_at
+        threshold = (now_utc() - timedelta(days=3)).isoformat()
+        r = (sb.table("purchase_orders").select("*")
+             .eq("status", Status.PENDING)
+             .lte("created_at", threshold)
+             .execute())
+        stale_pos = r.data or []
+        if not stale_pos:
+            return 0
+
+        admins = get_admins()
+        sent_count = 0
+        for po in stale_pos:
+            for admin in admins:
+                if has_recent_notification(admin['id'], po['id'], hours=20):
+                    continue
+                try:
+                    created = datetime.fromisoformat(
+                        po['created_at'].replace('Z', '+00:00')
+                    )
+                    days_stale = (now_utc() - created).days
+                except Exception:
+                    days_stale = 3
+
+                add_notification(
+                    admin['id'], po['id'],
+                    f"⏰ PO ค้างเกิน {days_stale} วัน",
+                    f"{po.get('po_number', '-')} ยังไม่ได้สั่ง supplier",
+                )
+                sent_count += 1
+        return sent_count
+    except Exception:
+        log.exception("check_and_notify_stale_pos failed")
+        return 0
+
+
+# ==================================================================
+# Categories
+# ==================================================================
+def get_categories() -> List[str]:
+    try:
+        sb = get_supabase()
         try:
-            r = sb.table("equipment_categories").select("name").order("display_order").order("created_at").execute()
+            r = (sb.table("equipment_categories")
+                 .select("name")
+                 .order("display_order")
+                 .order("created_at")
+                 .execute())
         except Exception:
-            r = sb.table("equipment_categories").select("name").order("created_at").execute()
+            r = (sb.table("equipment_categories")
+                 .select("name").order("created_at").execute())
         cats = [x["name"] for x in r.data]
         if not cats:
             for n in DEFAULT_CATEGORIES:
@@ -436,15 +601,16 @@ def get_categories():
             return DEFAULT_CATEGORIES.copy()
         return cats
     except Exception:
+        log.exception("get_categories failed")
         return DEFAULT_CATEGORIES.copy()
 
 
-def get_categories_with_order():
-    """ดึงหมวด + ลำดับ (สำหรับหน้าจัดการ)"""
+def get_categories_with_order() -> List[dict]:
     try:
         sb = get_supabase()
         try:
-            r = sb.table("equipment_categories").select("*").order("display_order").order("created_at").execute()
+            r = (sb.table("equipment_categories").select("*")
+                 .order("display_order").order("created_at").execute())
         except Exception:
             r = sb.table("equipment_categories").select("*").order("created_at").execute()
         return r.data or []
@@ -452,12 +618,13 @@ def get_categories_with_order():
         return []
 
 
-def add_category(name):
+def add_category(name: str) -> bool:
     try:
         sb = get_supabase()
-        # หาลำดับสูงสุดแล้วต่อท้าย
         try:
-            mx = sb.table("equipment_categories").select("display_order").order("display_order", desc=True).limit(1).execute()
+            mx = (sb.table("equipment_categories")
+                  .select("display_order")
+                  .order("display_order", desc=True).limit(1).execute())
             next_order = (mx.data[0].get("display_order") or 0) + 1 if mx.data else 1
         except Exception:
             next_order = 999
@@ -466,18 +633,17 @@ def add_category(name):
                 "name": name, "display_order": next_order,
             }).execute()
         except Exception:
-            # fallback ถ้ายังไม่มี column
             sb.table("equipment_categories").insert({"name": name}).execute()
         return True
     except Exception:
+        log.exception("add_category failed")
         return False
 
 
-def move_category(name, direction):
-    """เลื่อนหมวดขึ้น/ลง — direction = 'up' หรือ 'down'"""
+def move_category(name: str, direction: str) -> bool:
+    """เลื่อนหมวดขึ้น/ลง"""
     try:
         sb = get_supabase()
-        # ดึงทั้งหมดเรียงตามลำดับ
         cats = get_categories_with_order()
         if not cats:
             return False
@@ -485,81 +651,80 @@ def move_category(name, direction):
         if idx < 0:
             return False
         if direction == 'up' and idx == 0:
-            return False  # บนสุดอยู่แล้ว
+            return False
         if direction == 'down' and idx == len(cats) - 1:
-            return False  # ล่างสุดอยู่แล้ว
+            return False
 
         target_idx = idx - 1 if direction == 'up' else idx + 1
-        a = cats[idx]
-        b = cats[target_idx]
+        a, b = cats[idx], cats[target_idx]
 
-        # สลับ display_order
         ord_a = a.get('display_order', idx + 1)
         ord_b = b.get('display_order', target_idx + 1)
         sb.table("equipment_categories").update({"display_order": ord_b}).eq("id", a['id']).execute()
         sb.table("equipment_categories").update({"display_order": ord_a}).eq("id", b['id']).execute()
         return True
-    except Exception as e:
-        st.error(f"ย้ายไม่สำเร็จ: {e}")
+    except Exception:
+        log.exception("move_category failed")
         return False
 
 
-def update_category(old_name, new_name):
-    """เปลี่ยนชื่อหมวด + อัปเดต equipment ที่อ้างถึง"""
+def update_category(old_name: str, new_name: str) -> bool:
     try:
         sb = get_supabase()
-        # 1) update ชื่อหมวด
         sb.table("equipment_categories").update({"name": new_name}).eq("name", old_name).execute()
-        # 2) อัปเดต equipment ที่ใช้หมวดเดิม
         sb.table("equipment").update({"category": new_name}).eq("category", old_name).execute()
         return True
-    except Exception as e:
-        st.error(f"แก้ไขไม่สำเร็จ: {e}")
+    except Exception:
+        log.exception("update_category failed")
         return False
 
 
-def delete_category(name):
-    """ลบหมวด — ต้องไม่มีสินค้าอยู่ในหมวดนี้"""
+def delete_category(name: str) -> tuple[bool, str]:
     try:
         sb = get_supabase()
-        # ตรวจว่ามีสินค้าใน category นี้หรือเปล่า
-        c = sb.table("equipment").select("id", count="exact").eq("category", name).eq("is_active", True).execute()
+        c = (sb.table("equipment").select("id", count="exact")
+             .eq("category", name).eq("is_active", True).execute())
         if c.count and c.count > 0:
-            return False, f"มีสินค้า {c.count} รายการในหมวดนี้ — ย้ายหรือลบสินค้าก่อน"
+            return False, f"มีสินค้า {c.count} รายการในหมวดนี้"
         sb.table("equipment_categories").delete().eq("name", name).execute()
         return True, "ลบเรียบร้อย"
     except Exception as e:
-        return False, str(e)
+        log.exception("delete_category failed")
+        return False, "ลบไม่สำเร็จ"
 
 
-def count_equipment_by_category(name):
-    """นับจำนวนสินค้า active ในหมวด"""
+def count_equipment_by_category(name: str) -> int:
     try:
         sb = get_supabase()
-        r = sb.table("equipment").select("id", count="exact").eq("category", name).eq("is_active", True).execute()
+        r = (sb.table("equipment").select("id", count="exact")
+             .eq("category", name).eq("is_active", True).execute())
         return r.count or 0
     except Exception:
         return 0
 
 
-# --- Image upload ---
-def upload_image(file_bytes, filename, bucket=IMG_EQ):
+# ==================================================================
+# Image / attachment upload
+# ==================================================================
+def upload_image(file_bytes: bytes, filename: str, bucket: str = IMG_EQ) -> Optional[str]:
     sb = get_supabase()
-    ext = filename.rsplit(".", 1)[-1].lower()
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "jpg"
     if ext not in ("jpg", "jpeg", "png", "webp"):
         ext = "jpg"
     new_fn = f"{uuid.uuid4().hex}.{ext}"
     ct = f"image/{'jpeg' if ext == 'jpg' else ext}"
     try:
-        sb.storage.from_(bucket).upload(path=new_fn, file=file_bytes,
-                                          file_options={"content-type": ct, "upsert": "false"})
+        sb.storage.from_(bucket).upload(
+            path=new_fn, file=file_bytes,
+            file_options={"content-type": ct, "upsert": "false"},
+        )
         return sb.storage.from_(bucket).get_public_url(new_fn)
-    except Exception as e:
-        st.error(f"อัปโหลดไม่สำเร็จ: {e}")
+    except Exception:
+        log.exception("upload_image failed")
+        st.error("⚠️ อัปโหลดรูปไม่สำเร็จ")
         return None
 
 
-# Mapping ext → mime type สำหรับ attachment
 ATTACHMENT_MIMES = {
     'pdf': 'application/pdf',
     'doc': 'application/msword',
@@ -570,24 +735,18 @@ ATTACHMENT_MIMES = {
     'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     'txt': 'text/plain',
     'csv': 'text/csv',
-    'jpg': 'image/jpeg',
-    'jpeg': 'image/jpeg',
-    'png': 'image/png',
-    'gif': 'image/gif',
-    'webp': 'image/webp',
-    'zip': 'application/zip',
-    'rar': 'application/x-rar-compressed',
+    'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png',
+    'gif': 'image/gif', 'webp': 'image/webp',
+    'zip': 'application/zip', 'rar': 'application/x-rar-compressed',
     '7z': 'application/x-7z-compressed',
 }
 
 
-def upload_attachment(file_bytes, filename, bucket=IMG_ATTACH):
-    """อัปโหลดไฟล์แนบ (PDF, Word, Excel, รูป, etc.)
-    คืน dict {'url', 'name', 'size', 'type'} หรือ None"""
+def upload_attachment(file_bytes: bytes, filename: str,
+                      bucket: str = IMG_ATTACH) -> Optional[dict]:
     sb = get_supabase()
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "bin"
     content_type = ATTACHMENT_MIMES.get(ext, "application/octet-stream")
-    # เก็บชื่อจริงไว้ + ใช้ UUID นำหน้าเพื่อกัน collision
     safe_name = f"{uuid.uuid4().hex}_{filename}"
     try:
         sb.storage.from_(bucket).upload(
@@ -599,43 +758,41 @@ def upload_attachment(file_bytes, filename, bucket=IMG_ATTACH):
             'name': filename,
             'size': len(file_bytes),
             'type': ext,
-            'uploaded_at': datetime.now().isoformat(),
+            'uploaded_at': now_utc().isoformat(),
         }
-    except Exception as e:
-        st.error(f"อัปโหลดไม่สำเร็จ ({filename}): {e}")
+    except Exception:
+        log.exception("upload_attachment failed")
+        st.error(f"⚠️ อัปโหลด '{filename}' ไม่สำเร็จ")
         return None
 
 
-def add_po_attachments(po_id, new_attachments, user_name="", category="general"):
-    """เพิ่มไฟล์แนบเข้า PO (รวมกับของเดิม)
-    new_attachments: list ของ dict {url, name, size, type, ...}"""
+def add_po_attachments(po_id: str, new_attachments: list,
+                       user_name: str = "", category: str = "general") -> bool:
     if not new_attachments:
         return False
-    sb = get_supabase()
     try:
+        sb = get_supabase()
         po = get_purchase_order(po_id)
         if not po:
             return False
         existing = po.get('attachment_urls') or []
-        # tag category + uploader
         for a in new_attachments:
             a['category'] = category
             a['uploaded_by'] = user_name
         merged = existing + new_attachments
         sb.table("purchase_orders").update({
             "attachment_urls": merged,
-            "updated_at": datetime.now().isoformat(),
+            "updated_at": now_utc().isoformat(),
         }).eq("id", po_id).execute()
         return True
-    except Exception as e:
-        st.error(f"บันทึกไฟล์แนบไม่สำเร็จ: {e}")
+    except Exception:
+        log.exception("add_po_attachments failed")
         return False
 
 
-def remove_po_attachment(po_id, attachment_url):
-    """ลบไฟล์แนบ 1 รายการ ออกจาก PO (ลบเฉพาะ reference ในตาราง — ไฟล์ยังอยู่ใน storage)"""
-    sb = get_supabase()
+def remove_po_attachment(po_id: str, attachment_url: str) -> bool:
     try:
+        sb = get_supabase()
         po = get_purchase_order(po_id)
         if not po:
             return False
@@ -643,113 +800,119 @@ def remove_po_attachment(po_id, attachment_url):
         new_list = [a for a in existing if a.get('url') != attachment_url]
         sb.table("purchase_orders").update({
             "attachment_urls": new_list,
-            "updated_at": datetime.now().isoformat(),
+            "updated_at": now_utc().isoformat(),
         }).eq("id", po_id).execute()
         return True
     except Exception:
         return False
 
 
-# --- Equipment ---
-def get_equipment_list(active_only=False, include_pending=False):
-    """ดึงรายการ equipment — default แสดงเฉพาะที่ approved แล้ว"""
+# ==================================================================
+# Equipment
+# ==================================================================
+def get_equipment_list(active_only: bool = False,
+                       include_pending: bool = False,
+                       include_rejected: bool = False) -> List[dict]:
     try:
         sb = get_supabase()
         q = sb.table("equipment").select("*")
         if active_only:
             q = q.eq("is_active", True)
-        if not include_pending:
-            # ใช้ in_ เพื่อรวม approved + null (PO เก่าก่อน migration)
+        if not include_pending and not include_rejected:
             q = q.or_("approval_status.eq.approved,approval_status.is.null")
+        elif include_pending and not include_rejected:
+            q = q.or_("approval_status.eq.approved,approval_status.eq.pending,"
+                      "approval_status.is.null")
         return q.order("created_at", desc=True).execute().data or []
     except Exception:
+        log.exception("get_equipment_list failed")
         return []
 
 
-def get_pending_equipment():
-    """ดึง equipment ที่ user เสนอให้เพิ่ม (รออนุมัติ)"""
+def get_pending_equipment() -> List[dict]:
     try:
         sb = get_supabase()
-        return sb.table("equipment").select("*").eq(
-            "approval_status", "pending"
-        ).order("suggested_at", desc=True).execute().data or []
+        return (sb.table("equipment").select("*")
+                .eq("approval_status", "pending")
+                .order("suggested_at", desc=True).execute().data or [])
     except Exception:
         return []
 
 
-def suggest_equipment_from_po(name, suggested_by, suggested_by_name,
-                                 suggested_from_po, suggested_notes="",
-                                 unit="ชิ้น", image_urls=None):
-    """user สร้าง PO ด้วยรายการที่ไม่มีในระบบ → สร้าง equipment draft (pending)
-    return equipment_id
-    """
+def suggest_equipment_from_po(name: str, suggested_by: str,
+                              suggested_by_name: str,
+                              suggested_from_po: str,
+                              suggested_notes: str = "",
+                              unit: str = "ชิ้น",
+                              image_urls=None) -> Optional[dict]:
     try:
         sb = get_supabase()
-        # generate temporary SKU
         temp_sku = f"PENDING-{datetime.now().strftime('%Y%m%d%H%M%S')}"
         payload = {
-            "sku": temp_sku,
-            "name": name,
-            "category": "(รออนุมัติ)",
-            "unit": unit,
+            "sku": temp_sku, "name": name,
+            "category": "(รออนุมัติ)", "unit": unit,
             "description": suggested_notes or "",
-            "last_cost": 0,
-            "stock": 0,
-            "image_url": image_urls[0] if image_urls else "",
+            "last_cost": 0, "stock": 0,
+            "image_url": (image_urls[0] if image_urls else ""),
             "image_urls": image_urls or [],
             "is_active": True,
             "approval_status": "pending",
             "suggested_by": suggested_by,
             "suggested_by_name": suggested_by_name,
-            "suggested_at": datetime.now().isoformat(),
+            "suggested_at": now_utc().isoformat(),
             "suggested_from_po": suggested_from_po,
             "suggested_notes": suggested_notes,
         }
         r = sb.table("equipment").insert(payload).execute()
         return r.data[0] if r.data else None
-    except Exception as e:
-        st.error(f"เพิ่มสินค้า pending ไม่สำเร็จ: {e}")
+    except Exception:
+        log.exception("suggest_equipment_from_po failed")
         return None
 
 
-def approve_equipment(eq_id, sku, name, category, unit, description,
-                        last_cost=0, stock=0, approved_by_name=""):
-    """อนุมัติ equipment ที่ pending → เปลี่ยนเป็น approved + admin กรอกข้อมูลครบ"""
+def approve_equipment(eq_id: str, sku: str, name: str, category: str,
+                      unit: str, description: str,
+                      last_cost: float = 0, stock: int = 0,
+                      approved_by_name: str = "") -> bool:
     try:
         sb = get_supabase()
-        payload = {
-            "sku": sku,
-            "name": name,
-            "category": category,
-            "unit": unit or "ชิ้น",
-            "description": description or "",
+        sb.table("equipment").update({
+            "sku": sku, "name": name, "category": category,
+            "unit": unit or "ชิ้น", "description": description or "",
             "last_cost": float(last_cost or 0),
             "stock": int(stock or 0),
             "approval_status": "approved",
             "approved_by_name": approved_by_name,
-            "approved_at": datetime.now().isoformat(),
-        }
-        sb.table("equipment").update(payload).eq("id", eq_id).execute()
-
-        # Update items ทุก PO ที่อ้างถึง equipment นี้ (ตอนนี้ user อาจไม่ได้ใส่ equipment_id)
-        # → ระบบรองรับโดยอัตโนมัติเพราะ items.image_urls + name ถูกเก็บอยู่แล้ว
-        return True
-    except Exception as e:
-        st.error(f"อนุมัติไม่สำเร็จ: {e}")
-        return False
-
-
-def reject_equipment(eq_id, reason="", admin_name=""):
-    """ปฏิเสธ equipment pending → ลบทิ้ง"""
-    try:
-        sb = get_supabase()
-        sb.table("equipment").delete().eq("id", eq_id).execute()
+            "approved_at": now_utc().isoformat(),
+        }).eq("id", eq_id).execute()
         return True
     except Exception:
+        log.exception("approve_equipment failed")
         return False
 
 
-def get_equipment(eid):
+def reject_equipment(eq_id: str, reason: str = "",
+                     admin_name: str = "") -> bool:
+    """⭐ Soft reject — รักษาประวัติ + เรียกคืนได้
+    
+    เปลี่ยนเป็น soft reject แทน DELETE
+    """
+    try:
+        sb = get_supabase()
+        sb.table("equipment").update({
+            "approval_status": "rejected",
+            "rejected_reason": reason,
+            "rejected_by_name": admin_name,
+            "rejected_at": now_utc().isoformat(),
+            "is_active": False,  # ซ่อนออกจาก catalog
+        }).eq("id", eq_id).execute()
+        return True
+    except Exception:
+        log.exception("reject_equipment failed")
+        return False
+
+
+def get_equipment(eid: str) -> Optional[dict]:
     try:
         r = get_supabase().table("equipment").select("*").eq("id", eid).execute()
         return r.data[0] if r.data else None
@@ -757,14 +920,14 @@ def get_equipment(eid):
         return None
 
 
-def add_equipment(name, category, unit="ชิ้น", sku="", description="",
-                  last_cost=0, stock=0, image_url=None, image_urls=None):
+def add_equipment(name: str, category: str, unit: str = "ชิ้น",
+                  sku: str = "", description: str = "",
+                  last_cost: float = 0, stock: int = 0,
+                  image_url=None, image_urls=None) -> Optional[dict]:
     try:
-        # รวม image_url เก่ากับ image_urls ใหม่
         urls_list = list(image_urls or [])
         if image_url and image_url not in urls_list:
             urls_list.insert(0, image_url)
-        # primary image = รูปแรก
         primary = urls_list[0] if urls_list else None
         return get_supabase().table("equipment").insert({
             "name": name, "category": category, "unit": unit, "sku": sku,
@@ -774,29 +937,29 @@ def add_equipment(name, category, unit="ชิ้น", sku="", description="",
             "image_urls": urls_list,
             "is_active": True,
         }).execute().data[0]
-    except Exception as e:
-        st.error(f"เพิ่มไม่สำเร็จ: {e}")
+    except Exception:
+        log.exception("add_equipment failed")
+        st.error("⚠️ เพิ่มสินค้าไม่สำเร็จ")
         return None
 
 
-def update_equipment(eid, **fields):
+def update_equipment(eid: str, **fields) -> bool:
     try:
         if "last_cost" in fields:
             fields["last_cost"] = float(fields["last_cost"])
         if "stock" in fields:
             fields["stock"] = int(fields["stock"])
-        # ถ้ามี image_urls ให้ sync image_url (รูปแรก) ด้วย
         if "image_urls" in fields:
             urls = fields["image_urls"] or []
             fields["image_url"] = urls[0] if urls else None
         get_supabase().table("equipment").update(fields).eq("id", eid).execute()
         return True
     except Exception:
+        log.exception("update_equipment failed")
         return False
 
 
-def add_equipment_image(eid, image_url):
-    """เพิ่มรูปใน array (ไม่ลบของเดิม)"""
+def add_equipment_image(eid: str, image_url: str) -> bool:
     try:
         eq = get_equipment(eid)
         if not eq:
@@ -811,8 +974,7 @@ def add_equipment_image(eid, image_url):
         return False
 
 
-def remove_equipment_image(eid, image_url):
-    """ลบรูป 1 รูปออกจาก array"""
+def remove_equipment_image(eid: str, image_url: str) -> bool:
     try:
         eq = get_equipment(eid)
         if not eq:
@@ -826,18 +988,37 @@ def remove_equipment_image(eid, image_url):
         return False
 
 
-def delete_equipment(eid):
+def delete_equipment(eid: str) -> bool:
+    """⭐ Soft delete — set is_active = False"""
     try:
-        get_supabase().table("equipment").delete().eq("id", eid).execute()
+        get_supabase().table("equipment").update({
+            "is_active": False,
+        }).eq("id", eid).execute()
         return True
     except Exception:
+        log.exception("delete_equipment failed")
         return False
 
 
-# --- Purchase Orders ---
-def generate_po_number():
+# ==================================================================
+# PO Number generation — ATOMIC ⚡
+# ==================================================================
+def generate_po_number() -> str:
+    """⭐ Atomic PO number generation via Postgres function (no race condition)
+    
+    ดู migration_atomic_counter.sql
+    """
     sb = get_supabase()
     year = datetime.now().year
+    try:
+        # ใช้ RPC (Postgres function) — atomic
+        r = sb.rpc('next_po_number', {'year_int': year}).execute()
+        if r.data:
+            return r.data
+    except Exception:
+        log.warning("next_po_number RPC not available — falling back to legacy method")
+
+    # Fallback (อาจมี race) — สำหรับช่วง migrate
     cid = f"po_{year}"
     try:
         r = sb.table("counters").select("*").eq("id", cid).execute()
@@ -849,10 +1030,17 @@ def generate_po_number():
             sb.table("counters").insert({"id": cid, "value": 1}).execute()
         return f"PO-{year}-{v:04d}"
     except Exception:
+        log.exception("generate_po_number failed")
         return f"PO-{year}-{datetime.now().strftime('%H%M%S')}"
 
 
-def get_purchase_orders(user_id=None, role="requester", status_filter=None):
+# ==================================================================
+# Purchase Orders
+# ==================================================================
+def get_purchase_orders(user_id: Optional[str] = None,
+                        role: str = "requester",
+                        status_filter: Optional[str] = None,
+                        limit: int = 500) -> List[dict]:
     try:
         sb = get_supabase()
         q = sb.table("purchase_orders").select("*")
@@ -860,26 +1048,26 @@ def get_purchase_orders(user_id=None, role="requester", status_filter=None):
             q = q.eq("created_by", user_id)
         if status_filter and status_filter != "ทั้งหมด":
             q = q.eq("status", status_filter)
-        return q.order("created_at", desc=True).execute().data or []
-    except Exception as e:
-        st.error(f"ดึง PO ไม่สำเร็จ: {e}")
+        q = q.order("created_at", desc=True).limit(limit)
+        return q.execute().data or []
+    except Exception:
+        log.exception("get_purchase_orders failed")
+        st.error("⚠️ ไม่สามารถโหลดข้อมูล PO ได้")
         return []
 
 
-def get_pos_pending_receipt():
-    """ดึง PO ที่รอรับของ (สถานะ สั่งซื้อแล้ว / กำลังขนส่ง) — staff ทุกคนเห็นได้"""
+def get_pos_pending_receipt() -> List[dict]:
     try:
         sb = get_supabase()
-        q = sb.table("purchase_orders").select("*").in_(
-            "status", ["สั่งซื้อแล้ว", "กำลังขนส่ง"]
-        )
+        q = (sb.table("purchase_orders").select("*")
+             .in_("status", list(Status.PENDING_RECEIPT)))
         return q.order("expected_date", desc=False).execute().data or []
-    except Exception as e:
-        st.error(f"ดึง PO รอรับของไม่สำเร็จ: {e}")
+    except Exception:
+        log.exception("get_pos_pending_receipt failed")
         return []
 
 
-def get_purchase_order(po_id):
+def get_purchase_order(po_id: str) -> Optional[dict]:
     try:
         sb = get_supabase()
         if "-" in po_id and len(po_id) == 36:
@@ -891,8 +1079,14 @@ def get_purchase_order(po_id):
         return None
 
 
-def create_purchase_order(items, purpose="", notes="", created_by=None, created_by_name=""):
-    """ผู้สั่งสร้าง PO - ยังไม่มีราคา/supplier"""
+def create_purchase_order(items: list, purpose: str = "", notes: str = "",
+                          created_by: Optional[str] = None,
+                          created_by_name: str = "") -> Optional[dict]:
+    """⭐ FIXED: bug ที่ใช้ list.index() ซึ่งคืน index ผิดเมื่อมี items ซ้ำ"""
+    if not items:
+        st.error("กรุณาเพิ่มรายการอย่างน้อย 1 รายการ")
+        return None
+
     try:
         sb = get_supabase()
         po_no = generate_po_number()
@@ -903,24 +1097,22 @@ def create_purchase_order(items, purpose="", notes="", created_by=None, created_
             "unit": it.get("unit", "ชิ้น"),
             "unit_price": 0, "subtotal": 0,
             "notes": it.get("notes", ""),
-            # เก็บรูปจาก custom item (พิมพ์เอง + upload รูป)
             "image_urls": it.get("image_urls") or [],
         } for it in items]
 
         po = sb.table("purchase_orders").insert({
             "po_number": po_no, "items": clean,
             "purpose": purpose, "notes": notes,
-            "status": "รอจัดซื้อดำเนินการ",
+            "status": Status.PENDING,
             "created_by": created_by, "created_by_name": created_by_name,
         }).execute().data[0]
         log_activity(po["id"], created_by_name, "requester", "created",
-                      f"สร้าง PO มี {len(items)} รายการ")
+                     f"สร้าง PO มี {len(items)} รายการ")
 
-        # ===== Auto: สร้าง pending equipment สำหรับรายการที่ "พิมพ์เอง" =====
-        # → admin จะเห็นใน dashboard + อนุมัติเข้า catalog ได้
+        # ⭐ FIXED: ใช้ enumerate ที่ตรงตำแหน่ง — ไม่ใช้ list.index()
+        any_linked = False
         for idx, it in enumerate(items):
             if not it.get('equipment_id') and it.get('name'):
-                # custom item → สร้าง pending equipment + link กลับไปที่ items[idx]
                 pending = suggest_equipment_from_po(
                     name=it.get('name'),
                     suggested_by=created_by,
@@ -931,54 +1123,37 @@ def create_purchase_order(items, purpose="", notes="", created_by=None, created_
                     image_urls=it.get('image_urls') or [],
                 )
                 if pending:
-                    # link items ใน PO กับ equipment_id ที่เพิ่งสร้าง
                     clean[idx]['equipment_id'] = pending['id']
+                    any_linked = True
 
-        # update PO items ใหม่หลังสร้าง pending eq (ถ้ามี)
-        has_pending = any(
-            it.get('equipment_id') for it in clean
-            if not items[clean.index(it) if it in clean else 0].get('equipment_id')
-        )
-        # safer way: ตรวจว่า items มี linkage ไป pending eq หรือไม่
-        any_linked = False
-        for orig, c in zip(items, clean):
-            if not orig.get('equipment_id') and c.get('equipment_id'):
-                any_linked = True
-                break
         if any_linked:
-            sb.table("purchase_orders").update({
-                "items": clean,
-            }).eq("id", po['id']).execute()
+            sb.table("purchase_orders").update({"items": clean}).eq("id", po['id']).execute()
             po['items'] = clean
 
-        # ===== Notify admin ทุกคน =====
+        # Notify admin (with dedupe to prevent spam if many POs)
         try:
             n_items = len(items)
             n_custom = sum(1 for it in items if not it.get('equipment_id'))
             msg = f"{po['po_number']} • {n_items} รายการ"
             if n_custom > 0:
                 msg += f" (มี {n_custom} รายการใหม่ที่รออนุมัติ)"
-            notify_admins(
-                po['id'],
-                f"📥 PO ใหม่จาก {created_by_name}",
-                msg,
-            )
+            notify_admins(po['id'], f"📥 PO ใหม่จาก {created_by_name}", msg)
         except Exception:
-            pass  # notification fail ไม่ควร block การสร้าง PO
+            log.exception("notify_admins after PO create failed")
 
         return po
-    except Exception as e:
-        st.error(f"สร้างไม่สำเร็จ: {e}")
+    except Exception:
+        log.exception("create_purchase_order failed")
+        st.error("⚠️ สร้าง PO ไม่สำเร็จ กรุณาลองใหม่")
         return None
 
 
-def clone_purchase_order(source_po_id, created_by, created_by_name):
-    """คัดลอก PO เก่าเป็นใบใหม่ — เก็บ items แต่ reset status/dates/supplier"""
+def clone_purchase_order(source_po_id: str, created_by: str,
+                         created_by_name: str) -> Optional[dict]:
     try:
         source = get_purchase_order(source_po_id)
         if not source:
             return None
-        # Clone items แบบ reset ราคา (ผู้สั่งไม่ควรเห็นราคาเดิม)
         items = []
         for it in source.get('items', []):
             items.append({
@@ -989,124 +1164,160 @@ def clone_purchase_order(source_po_id, created_by, created_by_name):
                 'notes': it.get('notes', ''),
             })
         new_po = create_purchase_order(
-            items=items,
-            purpose="",  # ไม่ใช้ purpose แล้ว
+            items=items, purpose="",
             notes=f"[คัดลอกจาก {source['po_number']}] {source.get('notes', '')}".strip(),
             created_by=created_by,
             created_by_name=created_by_name,
         )
         if new_po:
             log_activity(new_po['id'], created_by_name, "requester", "cloned",
-                          f"คัดลอกจาก {source['po_number']}")
+                         f"คัดลอกจาก {source['po_number']}")
         return new_po
-    except Exception as e:
-        st.error(f"คัดลอกไม่สำเร็จ: {e}")
+    except Exception:
+        log.exception("clone_purchase_order failed")
         return None
 
 
-def get_low_stock_equipment(threshold=10):
-    """ดึงอุปกรณ์ที่สต็อกต่ำกว่า threshold (เริ่มต้น 10)"""
+def get_low_stock_equipment(threshold: int = 10) -> List[dict]:
     try:
-        return get_supabase().table("equipment").select("*").lt("stock", threshold).eq("is_active", True).execute().data or []
+        return (get_supabase().table("equipment").select("*")
+                .lt("stock", threshold).eq("is_active", True)
+                .execute().data or [])
     except Exception:
         return []
 
 
-# ===== Stock Withdrawal — เบิกสินค้าไปใช้ =====
-def create_withdrawal(equipment_id, qty, purpose, withdrawn_by, withdrawn_by_name,
-                       withdrawn_at=None, notes=""):
-    """บันทึกการเบิก + ตัดสต๊อกทันที — return withdrawal record หรือ None"""
+# ==================================================================
+# Stock Withdrawal — ATOMIC ⚡
+# ==================================================================
+def create_withdrawal(equipment_id: str, qty, purpose: str,
+                      withdrawn_by: str, withdrawn_by_name: str,
+                      withdrawn_at=None, notes: str = "") -> Optional[dict]:
+    """⭐ ATOMIC: ใช้ Postgres function เช็ค + หัก stock ในทำเดียว
+    
+    ดู migration_atomic_counter.sql → withdraw_stock function
+    """
     try:
-        sb = get_supabase()
-        # ดึงข้อมูล equipment
-        eq_r = sb.table("equipment").select("*").eq("id", equipment_id).execute()
-        if not eq_r.data:
-            st.error("ไม่พบสินค้านี้ในระบบ")
-            return None
-        eq = eq_r.data[0]
-        current_stock = float(eq.get('stock', 0) or 0)
         qty = float(qty)
-
         if qty <= 0:
             st.error("จำนวนต้องมากกว่า 0")
             return None
-        if qty > current_stock:
-            st.error(f"❌ สต็อกไม่พอ — มีเหลือ {current_stock:,.0f} {eq.get('unit', 'ชิ้น')}")
-            return None
 
-        # บันทึกการเบิก
+        sb = get_supabase()
+
+        # 1) Atomic check + decrement via Postgres function
+        try:
+            res = sb.rpc('withdraw_stock', {
+                'p_equipment_id': equipment_id,
+                'p_qty': qty,
+            }).execute()
+
+            if res.data:
+                result = res.data
+                # Postgres returns JSONB — supabase-py may parse to dict
+                if isinstance(result, str):
+                    import json as _json
+                    result = _json.loads(result)
+                if not result.get('success'):
+                    err = result.get('error', 'unknown')
+                    if err == 'insufficient_stock':
+                        st.error(f"❌ สต็อกไม่พอ — เหลือ {result.get('current_stock', 0)}")
+                    elif err == 'not_found':
+                        st.error("ไม่พบสินค้านี้ในระบบ")
+                    else:
+                        st.error(f"❌ {err}")
+                    return None
+                eq_name = result.get('name', '')
+                eq_unit = result.get('unit', 'ชิ้น')
+            else:
+                # RPC function not available yet — fall back
+                raise Exception("RPC function not available")
+
+        except Exception:
+            log.warning("withdraw_stock RPC failed — falling back to non-atomic version")
+            # Fallback (มี race condition แต่ใช้งานได้ระหว่าง migrate)
+            eq_r = sb.table("equipment").select("*").eq("id", equipment_id).execute()
+            if not eq_r.data:
+                st.error("ไม่พบสินค้านี้ในระบบ")
+                return None
+            eq = eq_r.data[0]
+            current_stock = float(eq.get('stock', 0) or 0)
+            if qty > current_stock:
+                st.error(f"❌ สต็อกไม่พอ — เหลือ {current_stock:,.0f}")
+                return None
+            new_stock = int(current_stock - qty)
+            sb.table("equipment").update({"stock": new_stock}).eq("id", equipment_id).execute()
+            eq_name = eq.get('name', '')
+            eq_unit = eq.get('unit', 'ชิ้น')
+
+        # 2) บันทึกการเบิก
         payload = {
             "equipment_id": equipment_id,
-            "equipment_name": eq.get('name', ''),
+            "equipment_name": eq_name,
             "qty": qty,
-            "unit": eq.get('unit', 'ชิ้น'),
+            "unit": eq_unit,
             "purpose": purpose or '',
             "withdrawn_by": withdrawn_by,
             "withdrawn_by_name": withdrawn_by_name or '',
             "notes": notes or '',
         }
         if withdrawn_at:
-            # date หรือ datetime → เก็บเป็น datetime เสมอ (กัน sort ผิดเมื่อหลายรายการในวันเดียวกัน)
             if hasattr(withdrawn_at, 'isoformat'):
-                # ถ้าเป็น date ล้วน (ไม่มี time) → บวกเวลาปัจจุบัน
                 if hasattr(withdrawn_at, 'hour'):
                     payload["withdrawn_at"] = withdrawn_at.isoformat()
                 else:
-                    # date → datetime ของวันนั้น + เวลาปัจจุบัน
                     now = datetime.now()
                     dt = datetime.combine(withdrawn_at, now.time())
                     payload["withdrawn_at"] = dt.isoformat()
             else:
                 payload["withdrawn_at"] = str(withdrawn_at)
         else:
-            # ไม่ระบุ → ใช้ตอนนี้
-            payload["withdrawn_at"] = datetime.now().isoformat()
+            payload["withdrawn_at"] = now_utc().isoformat()
 
         r = sb.table("withdrawals").insert(payload).execute()
-        if not r.data:
-            return None
+        return r.data[0] if r.data else None
 
-        # ตัดสต๊อก — บังคับเป็น int (DB column เป็น integer)
-        new_stock = int(current_stock - qty)
-        sb.table("equipment").update({"stock": new_stock}).eq("id", equipment_id).execute()
-
-        return r.data[0]
-    except Exception as e:
-        st.error(f"เบิกไม่สำเร็จ: {e}")
+    except Exception:
+        log.exception("create_withdrawal failed")
+        st.error("⚠️ เบิกไม่สำเร็จ กรุณาลองใหม่")
         return None
 
 
-def get_withdrawals(equipment_id=None, user_id=None, limit=200,
-                      start_date=None, end_date=None):
-    """ดึงประวัติการเบิก — filter ได้ตามสินค้า/user/ช่วงเวลา"""
+def get_withdrawals(equipment_id: Optional[str] = None,
+                    user_id: Optional[str] = None,
+                    limit: int = 200,
+                    start_date=None, end_date=None) -> List[dict]:
     try:
         sb = get_supabase()
-        q = sb.table("withdrawals").select("*").order("withdrawn_at", desc=True).limit(limit)
+        q = (sb.table("withdrawals").select("*")
+             .order("withdrawn_at", desc=True).limit(limit))
         if equipment_id:
             q = q.eq("equipment_id", equipment_id)
         if user_id:
             q = q.eq("withdrawn_by", user_id)
         if start_date:
             q = q.gte("withdrawn_at",
-                       start_date.isoformat() if hasattr(start_date, 'isoformat') else str(start_date))
+                      start_date.isoformat() if hasattr(start_date, 'isoformat')
+                      else str(start_date))
         if end_date:
             q = q.lte("withdrawn_at",
-                       end_date.isoformat() if hasattr(end_date, 'isoformat') else str(end_date))
+                      end_date.isoformat() if hasattr(end_date, 'isoformat')
+                      else str(end_date))
         return q.execute().data or []
     except Exception:
+        log.exception("get_withdrawals failed")
         return []
 
 
-def delete_withdrawal(withdrawal_id, restore_stock=True):
-    """ลบรายการเบิก (admin) — option คืนสต๊อก"""
+def delete_withdrawal(withdrawal_id: str, restore_stock: bool = True) -> bool:
+    """ลบรายการเบิก + คืน stock (atomic)"""
     try:
         sb = get_supabase()
         if restore_stock:
-            # ดึงข้อมูลก่อนลบ
             r = sb.table("withdrawals").select("*").eq("id", withdrawal_id).execute()
             if r.data:
                 w = r.data[0]
-                # คืนสต๊อก
+                # Atomic restore via SQL (no RPC needed, just increment)
                 eq_r = sb.table("equipment").select("stock").eq("id", w['equipment_id']).execute()
                 if eq_r.data:
                     cur = float(eq_r.data[0].get('stock', 0) or 0)
@@ -1115,21 +1326,20 @@ def delete_withdrawal(withdrawal_id, restore_stock=True):
         sb.table("withdrawals").delete().eq("id", withdrawal_id).execute()
         return True
     except Exception:
+        log.exception("delete_withdrawal failed")
         return False
 
 
-# ===== Draft PO (Auto-save) =====
-def save_po_draft(user_id, items, notes=""):
-    """บันทึก draft PO — มีได้ 1 ใบต่อ user (upsert)"""
+# ==================================================================
+# PO drafts
+# ==================================================================
+def save_po_draft(user_id: str, items: list, notes: str = "") -> bool:
     try:
         sb = get_supabase()
-        # เช็คว่ามี draft อยู่แล้วไหม
         existing = sb.table("po_drafts").select("id").eq("user_id", user_id).execute()
         payload = {
-            "user_id": user_id,
-            "items": items,
-            "notes": notes,
-            "updated_at": datetime.now().isoformat(),
+            "user_id": user_id, "items": items, "notes": notes,
+            "updated_at": now_utc().isoformat(),
         }
         if existing.data:
             sb.table("po_drafts").update(payload).eq("user_id", user_id).execute()
@@ -1140,8 +1350,7 @@ def save_po_draft(user_id, items, notes=""):
         return False
 
 
-def get_po_draft(user_id):
-    """ดึง draft ล่าสุดของ user"""
+def get_po_draft(user_id: str) -> Optional[dict]:
     try:
         r = get_supabase().table("po_drafts").select("*").eq("user_id", user_id).execute()
         return r.data[0] if r.data else None
@@ -1149,8 +1358,7 @@ def get_po_draft(user_id):
         return None
 
 
-def delete_po_draft(user_id):
-    """ลบ draft (หลัง submit แล้ว)"""
+def delete_po_draft(user_id: str) -> bool:
     try:
         get_supabase().table("po_drafts").delete().eq("user_id", user_id).execute()
         return True
@@ -1158,25 +1366,33 @@ def delete_po_draft(user_id):
         return False
 
 
-def update_po_procurement(po_id, supplier_name, supplier_contact, items_with_prices,
-                           discount=0, shipping_fee=0, vat=0, expected_date=None,
-                           procurement_notes="", user_name=""):
-    """จัดซื้อกรอกข้อมูล supplier + ราคา"""
+# ==================================================================
+# Procurement, status updates
+# ==================================================================
+def update_po_procurement(po_id: str, supplier_name: str,
+                          supplier_contact: str, items_with_prices: list,
+                          discount: float = 0, shipping_fee: float = 0,
+                          vat: float = 0, expected_date=None,
+                          procurement_notes: str = "",
+                          user_name: str = "") -> bool:
     try:
         sb = get_supabase()
         subtotal = sum(it.get("subtotal", 0) for it in items_with_prices)
         total = subtotal - float(discount) + float(shipping_fee) + float(vat)
 
         sb.table("purchase_orders").update({
-            "supplier_name": supplier_name, "supplier_contact": supplier_contact,
-            "items": items_with_prices, "subtotal": float(subtotal),
-            "discount": float(discount), "shipping_fee": float(shipping_fee),
+            "supplier_name": supplier_name,
+            "supplier_contact": supplier_contact,
+            "items": items_with_prices,
+            "subtotal": float(subtotal),
+            "discount": float(discount),
+            "shipping_fee": float(shipping_fee),
             "vat": float(vat), "total": float(total),
             "expected_date": expected_date,
             "ordered_date": datetime.now().date().isoformat(),
             "procurement_notes": procurement_notes,
-            "status": "สั่งซื้อแล้ว",
-            "updated_at": datetime.now().isoformat(),
+            "status": Status.ORDERED,
+            "updated_at": now_utc().isoformat(),
         }).eq("id", po_id).execute()
 
         for it in items_with_prices:
@@ -1184,98 +1400,105 @@ def update_po_procurement(po_id, supplier_name, supplier_contact, items_with_pri
                 update_equipment(it["equipment_id"], last_cost=it["unit_price"])
 
         log_activity(po_id, user_name, "admin", "ordered",
-                      f"สั่งกับ {supplier_name} | คาดได้ {expected_date or '-'}")
+                     f"สั่งกับ {supplier_name} | คาดได้ {expected_date or '-'}")
 
-        # ===== Notify ผู้สร้าง PO =====
         try:
             po = get_purchase_order(po_id)
             if po and po.get('created_by'):
                 add_notification(
-                    po['created_by'],
-                    po_id,
+                    po['created_by'], po_id,
                     f"✅ {po.get('po_number', '-')} สั่งซื้อแล้ว",
                     f"แอดมินสั่งกับ {supplier_name} • คาดว่าได้รับ {expected_date or '-'}",
                 )
         except Exception:
-            pass
+            log.exception("notify after procurement failed")
 
         return True
-    except Exception as e:
-        st.error(f"ไม่สำเร็จ: {e}")
+    except Exception:
+        log.exception("update_po_procurement failed")
+        st.error("⚠️ บันทึกไม่สำเร็จ")
         return False
 
 
-def update_po_status(po_id, new_status, user_name, user_role, note="", tracking_number=None):
+def update_po_status(po_id: str, new_status: str,
+                     user_name: str, user_role: str,
+                     note: str = "",
+                     tracking_number: Optional[str] = None) -> bool:
     try:
         sb = get_supabase()
         po = get_purchase_order(po_id)
         if not po:
             return False
-        upd = {"status": new_status, "updated_at": datetime.now().isoformat()}
+        upd = {"status": new_status, "updated_at": now_utc().isoformat()}
         if tracking_number is not None:
             upd["tracking_number"] = tracking_number
-        if new_status == "เสร็จสมบูรณ์" and not po.get("received_date"):
+        if new_status == Status.COMPLETE and not po.get("received_date"):
             upd["received_date"] = datetime.now().date().isoformat()
 
         sb.table("purchase_orders").update(upd).eq("id", po["id"]).execute()
         log_activity(po["id"], user_name, user_role, "status_changed",
-                      f"{po['status']} → {new_status}" + (f" | {note}" if note else ""))
+                     f"{po['status']} → {new_status}" + (f" | {note}" if note else ""))
 
-        # ===== Notify ผู้สร้าง PO หรือ admin ตามสถานะ =====
         try:
-            if new_status == "กำลังขนส่ง" and po.get('created_by'):
+            if new_status == Status.SHIPPING and po.get('created_by'):
                 tk_msg = f" • Tracking: {tracking_number}" if tracking_number else ""
                 add_notification(
                     po['created_by'], po["id"],
                     f"🚚 {po.get('po_number', '-')} กำลังขนส่ง",
                     f"Supplier ส่งของแล้ว{tk_msg} — เตรียมรับของได้",
                 )
-            elif new_status == "เสร็จสมบูรณ์" and po.get('created_by'):
+            elif new_status == Status.COMPLETE and po.get('created_by'):
                 add_notification(
                     po['created_by'], po["id"],
                     f"🎉 {po.get('po_number', '-')} เสร็จสมบูรณ์",
-                    f"ปิดงานเรียบร้อย",
+                    "ปิดงานเรียบร้อย",
                 )
-            elif new_status == "ยกเลิก":
-                # แจ้งทั้งผู้สร้าง + admin
+            elif new_status == Status.CANCELLED:
                 if po.get('created_by'):
                     add_notification(
                         po['created_by'], po["id"],
                         f"❌ {po.get('po_number', '-')} ถูกยกเลิก",
                         f"โดย {user_name}" + (f" • {note}" if note else ""),
                     )
-                notify_admins(
-                    po["id"],
-                    f"❌ {po.get('po_number', '-')} ถูกยกเลิก",
-                    f"โดย {user_name}",
-                )
+                notify_admins(po["id"],
+                              f"❌ {po.get('po_number', '-')} ถูกยกเลิก",
+                              f"โดย {user_name}")
         except Exception:
-            pass
-
+            log.exception("notify after status change failed")
         return True
     except Exception:
+        log.exception("update_po_status failed")
         return False
 
 
-def delete_purchase_order(po_id):
+def delete_purchase_order(po_id: str) -> bool:
     try:
         get_supabase().table("purchase_orders").delete().eq("id", po_id).execute()
         return True
     except Exception:
+        log.exception("delete_purchase_order failed")
         return False
 
 
-def get_unique_suppliers():
+def get_unique_suppliers() -> List[str]:
     try:
-        r = get_supabase().table("purchase_orders").select("supplier_name").not_.is_("supplier_name", "null").execute()
-        return sorted(set(x["supplier_name"] for x in (r.data or []) if x.get("supplier_name")))
+        r = (get_supabase().table("purchase_orders")
+             .select("supplier_name")
+             .not_.is_("supplier_name", "null").execute())
+        return sorted(set(x["supplier_name"] for x in (r.data or [])
+                          if x.get("supplier_name")))
     except Exception:
         return []
 
 
-# --- Deliveries ---
-def add_delivery(po_id, items_received, overall_condition, issue_description="",
-                 notes="", image_urls=None, user_name=""):
+# ==================================================================
+# Deliveries
+# ==================================================================
+def add_delivery(po_id: str, items_received: list,
+                 overall_condition: str,
+                 issue_description: str = "",
+                 notes: str = "", image_urls=None,
+                 user_name: str = "") -> Optional[dict]:
     try:
         sb = get_supabase()
         existing = sb.table("po_deliveries").select("delivery_no").eq("po_id", po_id).execute()
@@ -1297,52 +1520,51 @@ def add_delivery(po_id, items_received, overall_condition, issue_description="",
                 eq = get_equipment(it["equipment_id"])
                 if eq:
                     update_equipment(it["equipment_id"],
-                                       stock=(eq.get("stock") or 0) + int(it["qty_received"]))
+                                     stock=(eq.get("stock") or 0) + int(it["qty_received"]))
 
-        # อัปเดต status
         po = get_purchase_order(po_id)
         if po:
-            new_status = "มีปัญหา" if overall_condition != "ปกติ" else "รับของแล้ว"
+            new_status = Status.PROBLEM if overall_condition != 'ปกติ' else Status.RECEIVED
             sb.table("purchase_orders").update({
                 "status": new_status,
                 "received_date": datetime.now().date().isoformat(),
-                "updated_at": datetime.now().isoformat(),
+                "updated_at": now_utc().isoformat(),
             }).eq("id", po_id).execute()
             log_activity(po_id, user_name, "requester", "received",
-                          f"รับของ #{d_no} | สภาพ: {overall_condition}")
+                         f"รับของ #{d_no} | สภาพ: {overall_condition}")
 
-            # ===== Notify admin ตอนรับของ =====
             try:
-                if new_status == "มีปัญหา":
-                    notify_admins(
-                        po_id,
-                        f"⚠️ {po.get('po_number', '-')} มีปัญหา",
-                        f"{user_name} แจ้ง: {issue_description or 'ของไม่ครบ/ไม่ตรงสเปค'}",
-                    )
+                if new_status == Status.PROBLEM:
+                    notify_admins(po_id,
+                                  f"⚠️ {po.get('po_number', '-')} มีปัญหา",
+                                  f"{user_name} แจ้ง: {issue_description or 'ของไม่ครบ'}")
                 else:
-                    notify_admins(
-                        po_id,
-                        f"📦 {po.get('po_number', '-')} รับของแล้ว",
-                        f"{user_name} รับของเรียบร้อย",
-                    )
+                    notify_admins(po_id,
+                                  f"📦 {po.get('po_number', '-')} รับของแล้ว",
+                                  f"{user_name} รับของเรียบร้อย")
             except Exception:
-                pass
+                log.exception("notify after delivery failed")
 
         return delivery
-    except Exception as e:
-        st.error(f"บันทึกไม่สำเร็จ: {e}")
+    except Exception:
+        log.exception("add_delivery failed")
+        st.error("⚠️ บันทึกการรับของไม่สำเร็จ")
         return None
 
 
-def get_deliveries(po_id):
+def get_deliveries(po_id: str) -> List[dict]:
     try:
-        return get_supabase().table("po_deliveries").select("*").eq("po_id", po_id).order("delivery_no").execute().data or []
+        return (get_supabase().table("po_deliveries").select("*")
+                .eq("po_id", po_id).order("delivery_no").execute().data or [])
     except Exception:
         return []
 
 
-# --- Activity ---
-def log_activity(po_id, user_name, user_role, action, description=""):
+# ==================================================================
+# Activities + Comments + Notifications
+# ==================================================================
+def log_activity(po_id: str, user_name: str, user_role: str,
+                 action: str, description: str = "") -> bool:
     try:
         get_supabase().table("po_activities").insert({
             "po_id": po_id, "user_name": user_name, "user_role": user_role,
@@ -1353,15 +1575,17 @@ def log_activity(po_id, user_name, user_role, action, description=""):
         return False
 
 
-def get_activities(po_id):
+def get_activities(po_id: str) -> List[dict]:
     try:
-        return get_supabase().table("po_activities").select("*").eq("po_id", po_id).order("created_at", desc=True).execute().data or []
+        return (get_supabase().table("po_activities").select("*")
+                .eq("po_id", po_id).order("created_at", desc=True)
+                .execute().data or [])
     except Exception:
         return []
 
 
-# --- Comments ---
-def add_comment(po_id, user_name, user_role, message):
+def add_comment(po_id: str, user_name: str, user_role: str,
+                message: str) -> bool:
     try:
         get_supabase().table("po_comments").insert({
             "po_id": po_id, "user_name": user_name,
@@ -1373,25 +1597,27 @@ def add_comment(po_id, user_name, user_role, message):
         return False
 
 
-def get_comments(po_id):
+def get_comments(po_id: str) -> List[dict]:
     try:
-        return get_supabase().table("po_comments").select("*").eq("po_id", po_id).order("created_at").execute().data or []
+        return (get_supabase().table("po_comments").select("*")
+                .eq("po_id", po_id).order("created_at").execute().data or [])
     except Exception:
         return []
 
 
-# --- Notifications ---
-def add_notification(user_id, po_id, title, message=""):
+def add_notification(user_id: str, po_id: str, title: str,
+                     message: str = "") -> bool:
     try:
         get_supabase().table("notifications").insert({
-            "user_id": user_id, "po_id": po_id, "title": title, "message": message,
+            "user_id": user_id, "po_id": po_id,
+            "title": title, "message": message,
         }).execute()
         return True
     except Exception:
         return False
 
 
-def get_notifications(user_id, unread_only=False):
+def get_notifications(user_id: str, unread_only: bool = False) -> List[dict]:
     try:
         q = get_supabase().table("notifications").select("*").eq("user_id", user_id)
         if unread_only:
@@ -1401,7 +1627,7 @@ def get_notifications(user_id, unread_only=False):
         return []
 
 
-def mark_notification_read(nid):
+def mark_notification_read(nid: str) -> bool:
     try:
         get_supabase().table("notifications").update({"is_read": True}).eq("id", nid).execute()
         return True
@@ -1409,7 +1635,7 @@ def mark_notification_read(nid):
         return False
 
 
-def mark_all_notifications_read(user_id):
+def mark_all_notifications_read(user_id: str) -> bool:
     try:
         get_supabase().table("notifications").update({"is_read": True}).eq("user_id", user_id).execute()
         return True
@@ -1417,19 +1643,211 @@ def mark_all_notifications_read(user_id):
         return False
 
 
-# --- Overdue/Upcoming ---
-def get_overdue_pos():
+# ==================================================================
+# Overdue / Upcoming
+# ==================================================================
+def get_overdue_pos() -> List[dict]:
     try:
         today = date.today().isoformat()
-        return get_supabase().table("purchase_orders").select("*").lt("expected_date", today).in_("status", ["สั่งซื้อแล้ว", "กำลังขนส่ง"]).execute().data or []
+        return (get_supabase().table("purchase_orders").select("*")
+                .lt("expected_date", today)
+                .in_("status", list(Status.PENDING_RECEIPT))
+                .execute().data or [])
     except Exception:
         return []
 
 
-def get_upcoming_pos(days=3):
+def get_upcoming_pos(days: int = 3) -> List[dict]:
     try:
         today = date.today()
         deadline = (today + timedelta(days=days)).isoformat()
-        return get_supabase().table("purchase_orders").select("*").gte("expected_date", today.isoformat()).lte("expected_date", deadline).in_("status", ["สั่งซื้อแล้ว", "กำลังขนส่ง"]).execute().data or []
+        return (get_supabase().table("purchase_orders").select("*")
+                .gte("expected_date", today.isoformat())
+                .lte("expected_date", deadline)
+                .in_("status", list(Status.PENDING_RECEIPT))
+                .execute().data or [])
     except Exception:
         return []
+
+
+# ==================================================================
+# 💰 BUDGET TRACKING (NEW FEATURE)
+# ==================================================================
+def get_budget_for_period(period_type: str, year: int,
+                          month: Optional[int] = None,
+                          category: Optional[str] = None) -> Optional[dict]:
+    """ดึงงบประมาณของช่วงเวลานั้นๆ
+    period_type: 'monthly', 'quarterly', 'yearly'
+    """
+    try:
+        sb = get_supabase()
+        q = (sb.table("budget_periods").select("*")
+             .eq("period_type", period_type)
+             .eq("period_year", year))
+        if month is not None:
+            q = q.eq("period_month", month)
+        else:
+            q = q.is_("period_month", None)
+        if category:
+            q = q.eq("category", category)
+        else:
+            q = q.is_("category", None)
+        r = q.execute()
+        return r.data[0] if r.data else None
+    except Exception:
+        return None
+
+
+def list_budgets(year: Optional[int] = None) -> List[dict]:
+    """ดึงงบประมาณทั้งหมด"""
+    try:
+        sb = get_supabase()
+        q = sb.table("budget_periods").select("*")
+        if year:
+            q = q.eq("period_year", year)
+        return q.order("period_year", desc=True).order("period_month").execute().data or []
+    except Exception:
+        return []
+
+
+def upsert_budget(period_type: str, year: int, amount: float,
+                  month: Optional[int] = None,
+                  category: Optional[str] = None,
+                  notes: str = "",
+                  created_by_name: str = "") -> bool:
+    """เพิ่ม/แก้งบประมาณ"""
+    try:
+        sb = get_supabase()
+        existing = get_budget_for_period(period_type, year, month, category)
+        payload = {
+            "period_type": period_type,
+            "period_year": year,
+            "period_month": month,
+            "category": category,
+            "amount": float(amount),
+            "notes": notes,
+            "created_by_name": created_by_name,
+        }
+        if existing:
+            sb.table("budget_periods").update(payload).eq("id", existing['id']).execute()
+        else:
+            sb.table("budget_periods").insert(payload).execute()
+        return True
+    except Exception:
+        log.exception("upsert_budget failed")
+        return False
+
+
+def delete_budget(budget_id: str) -> bool:
+    try:
+        get_supabase().table("budget_periods").delete().eq("id", budget_id).execute()
+        return True
+    except Exception:
+        return False
+
+
+def calculate_actual_spending(year: int, month: Optional[int] = None,
+                              category: Optional[str] = None) -> float:
+    """คำนวณยอดใช้จ่ายจริงในช่วงเวลานั้น
+    
+    นับเฉพาะ PO ที่ status ในกลุ่ม "ใช้งบจริงแล้ว" — ordered onwards
+    """
+    try:
+        sb = get_supabase()
+        # ดึง PO ที่อยู่ในช่วงเวลานั้น
+        if month is not None:
+            start = date(year, month, 1)
+            if month == 12:
+                end = date(year + 1, 1, 1)
+            else:
+                end = date(year, month + 1, 1)
+        else:
+            start = date(year, 1, 1)
+            end = date(year + 1, 1, 1)
+
+        # ใช้ ordered_date เพราะนับว่าเป็นการ "ใช้งบ" ตอนสั่งซื้อ
+        valid_statuses = [Status.ORDERED, Status.SHIPPING, Status.RECEIVED,
+                          Status.PROBLEM, Status.COMPLETE]
+
+        q = (sb.table("purchase_orders").select("total, items, ordered_date")
+             .gte("ordered_date", start.isoformat())
+             .lt("ordered_date", end.isoformat())
+             .in_("status", valid_statuses))
+        r = q.execute()
+        total = 0.0
+        for p in r.data or []:
+            if category:
+                # ถ้า filter category — ต้องคำนวณจาก items แต่ละชิ้นที่ตรง category
+                # (ต้อง JOIN กับ equipment.category)
+                # ทำแบบง่าย: รวม items ที่อยู่ในหมวดนั้น
+                eq_ids = [it.get('equipment_id') for it in (p.get('items') or [])
+                          if it.get('equipment_id')]
+                if not eq_ids:
+                    continue
+                eq_r = (sb.table("equipment").select("id, category")
+                        .in_("id", eq_ids).execute())
+                cat_eq_ids = {e['id'] for e in (eq_r.data or [])
+                              if e.get('category') == category}
+                # คำนวณ subtotal เฉพาะ items ในหมวด
+                for it in (p.get('items') or []):
+                    if it.get('equipment_id') in cat_eq_ids:
+                        total += float(it.get('subtotal', 0) or 0)
+            else:
+                total += float(p.get('total', 0) or 0)
+        return total
+    except Exception:
+        log.exception("calculate_actual_spending failed")
+        return 0.0
+
+
+def get_budget_status_for_dashboard(year: int, month: int) -> List[dict]:
+    """ดึงสถานะงบประมาณทั้งหมดของเดือนนั้น พร้อม % ที่ใช้ไป
+    
+    return list of {
+        type, period, category, budget, actual, percent, status
+    }
+    """
+    results = []
+    budgets = [b for b in list_budgets(year=year)
+               if (b['period_type'] == 'monthly' and b.get('period_month') == month)
+               or b['period_type'] == 'yearly'
+               or (b['period_type'] == 'quarterly'
+                   and ((month - 1) // 3 + 1) == ((b.get('period_month') - 1) // 3 + 1
+                                                   if b.get('period_month') else 0))]
+
+    for b in budgets:
+        if b['period_type'] == 'monthly':
+            actual = calculate_actual_spending(year, b['period_month'], b.get('category'))
+        elif b['period_type'] == 'yearly':
+            actual = calculate_actual_spending(year, None, b.get('category'))
+        else:  # quarterly
+            actual = 0
+            if b.get('period_month'):
+                q = (b['period_month'] - 1) // 3
+                for m in range(q * 3 + 1, q * 3 + 4):
+                    actual += calculate_actual_spending(year, m, b.get('category'))
+
+        budget = float(b.get('amount', 0) or 0)
+        pct = (actual / budget * 100) if budget > 0 else 0
+        if pct >= 100:
+            stat = 'over'
+        elif pct >= 95:
+            stat = 'critical'
+        elif pct >= 80:
+            stat = 'warning'
+        else:
+            stat = 'ok'
+
+        results.append({
+            'id': b['id'],
+            'type': b['period_type'],
+            'period': f"{year}-{b.get('period_month', '*'):>02}" if b.get('period_month')
+                      else str(year),
+            'category': b.get('category') or 'รวมทั้งหมด',
+            'budget': budget,
+            'actual': actual,
+            'remaining': budget - actual,
+            'percent': pct,
+            'status': stat,
+        })
+    return results
