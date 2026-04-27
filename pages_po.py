@@ -7,7 +7,8 @@ import pandas as pd
 import database as db
 from helpers import (current_user, is_admin, uid, uname, urole,
                       fmt_date, fmt_dt,
-                      show_status_badge, days_indicator,
+                      show_status_badge, show_status_pill, status_pill_html,
+                      days_indicator,
                       show_empty_state)
 
 
@@ -820,7 +821,6 @@ def render_po_view():
     col1, col2 = st.columns([5, 1])
     with col1:
         # Build header with status pill
-        from helpers import status_pill_html
         sup_text = po.get('supplier_name') or '(ยังไม่ระบุ supplier)'
         n_items = len(po.get('items') or [])
         creator = po.get('created_by_name', '—')
