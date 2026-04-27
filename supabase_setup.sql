@@ -33,7 +33,6 @@ CREATE TABLE IF NOT EXISTS equipment (
     last_cost NUMERIC(10, 2) DEFAULT 0,
     stock INTEGER DEFAULT 0,
     image_url TEXT,
-    image_urls JSONB DEFAULT '[]',
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -201,22 +200,6 @@ CREATE INDEX IF NOT EXISTS idx_login_attempts_time ON login_attempts(created_at)
 ALTER TABLE login_attempts ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "login_attempts_all" ON login_attempts;
 CREATE POLICY "login_attempts_all" ON login_attempts
-    FOR ALL USING (true) WITH CHECK (true);
-
--- User sessions (จำตอน refresh)
-CREATE TABLE IF NOT EXISTS user_sessions (
-    token TEXT PRIMARY KEY,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    last_activity_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_sessions_activity ON user_sessions(last_activity_at);
-
-ALTER TABLE user_sessions ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "user_sessions_all" ON user_sessions;
-CREATE POLICY "user_sessions_all" ON user_sessions
     FOR ALL USING (true) WITH CHECK (true);
 
 -- ============================================================

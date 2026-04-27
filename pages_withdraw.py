@@ -9,12 +9,8 @@ from helpers import current_user, is_admin, uid, uname, fmt_date
 
 def render_withdraw():
     """หน้าหลัก: เบิกสินค้า + ประวัติ"""
-    st.markdown("""
-    <div class="page-title-block">
-        <div class="page-title-text">เบิกสินค้า</div>
-        <div class="page-title-sub">บันทึกการใช้สินค้าจากสต็อก + ดูประวัติ</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown("## 📤 เบิกสินค้า")
+    st.caption("บันทึกการเบิกสินค้าไปใช้ — ระบบจะตัดสต๊อกอัตโนมัติ")
 
     tab1, tab2 = st.tabs(["➕ เบิกใหม่", "📜 ประวัติการเบิก"])
 

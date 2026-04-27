@@ -36,12 +36,7 @@ def render_equipment():
         else:
             st.session_state.pop('catalog_approve_id', None)
 
-    st.markdown("""
-    <div class="page-title-block">
-        <div class="page-title-text">จัดการ Catalog</div>
-        <div class="page-title-sub">เพิ่ม / แก้ไข / จัดหมวดหมู่ สินค้าทั้งหมด</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown("## 📦 จัดการ Catalog สินค้า")
     st.caption("คลังข้อมูลสินค้า/อุปกรณ์ทั้งหมด — ทีมจะใช้สั่งซื้อจากที่นี่")
 
     # ===== Pending equipment (รออนุมัติ) =====
@@ -268,31 +263,32 @@ def render_equipment():
 
 
 def _stock_status(stock):
-    """คืน (emoji, css_class, color, label) ตาม stock"""
+    """คืน (emoji, color, label) ตาม stock"""
     if stock is None or stock == 0:
-        return ("⚠️", "out", "#A32D2D", "หมด")
+        return ("🔴", "#A32D2D", "หมด")
     elif stock < 10:
-        return ("⚠️", "low", "#BA7517", f"เหลือ {stock}")
+        return ("🟡", "#BA7517", f"เหลือ {stock}")
     else:
-        return ("✓", "ok", "#1D9E75", f"คงเหลือ {stock}")
+        return ("🟢", "#1D9E75", f"คงเหลือ {stock}")
 
 
 def _render_eq_admin_card(eq):
-    """การ์ดอุปกรณ์ — B2B style with light background"""
+    """การ์ดอุปกรณ์ในหน้าจัดการ — รองรับหลายรูป + แก้/ลบ
+    ทุกการ์ดสูงเท่ากันทุกใบ (consistent height)"""
     # รวม image_urls + image_url (legacy) เป็น list
     images = list(eq.get('image_urls') or [])
     if eq.get('image_url') and eq['image_url'] not in images:
         images.insert(0, eq['image_url'])
 
     with st.container(border=True):
-        # ===== รูปหลัก — square + light bg =====
+        # ===== รูปหลัก — square fixed (1:1) =====
         if images:
             primary_url = images[0]
             st.markdown(
                 f'<div style="width:100%; aspect-ratio:1/1; '
-                f'background:var(--slate-100); border-radius:10px; overflow:hidden; '
+                f'background:#1a1a1a; border-radius:8px; overflow:hidden; '
                 f'display:flex; align-items:center; justify-content:center; '
-                f'margin-bottom:8px; border:1px solid var(--slate-200);">'
+                f'margin-bottom:8px;">'
                 f'<img src="{primary_url}" '
                 f'style="width:100%; height:100%; object-fit:cover; '
                 f'display:block;" '
@@ -304,101 +300,85 @@ def _render_eq_admin_card(eq):
         else:
             st.markdown(
                 '<div style="width:100%; aspect-ratio:1/1; '
-                'background:var(--slate-100); border-radius:10px; '
+                'background:#1a1a1a; border-radius:8px; '
                 'display:flex; align-items:center; justify-content:center; '
-                'font-size:64px; margin-bottom:8px; '
-                'border:1px solid var(--slate-200);">🧴</div>',
+                'font-size:64px; margin-bottom:8px;">🧴</div>',
                 unsafe_allow_html=True,
             )
 
-        # ===== Thumbnails — แสดง 4 ช่อง (ถ้าเงื่อนไขต้องการ) =====
-        if len(images) > 1:
-            thumb_cols = st.columns(4)
-            for i in range(4):
-                with thumb_cols[i]:
-                    idx = i + 1
-                    if idx < len(images):
-                        url = images[idx]
-                        st.markdown(
-                            f'<div style="width:100%; aspect-ratio:1/1; '
-                            f'background:var(--slate-100); border-radius:6px; '
-                            f'overflow:hidden; border:1px solid var(--slate-200);">'
-                            f'<img src="{url}" '
-                            f'style="width:100%; height:100%; '
-                            f'object-fit:cover; display:block;"/>'
-                            f'</div>',
-                            unsafe_allow_html=True,
-                        )
-                    else:
-                        st.markdown(
-                            '<div style="width:100%; aspect-ratio:1/1; '
-                            'background:var(--slate-50); '
-                            'border:1px dashed var(--slate-200); '
-                            'border-radius:6px;"></div>',
-                            unsafe_allow_html=True,
-                        )
+        # ===== Thumbnails — แสดง 4 ช่องเสมอ (placeholder ถ้าไม่มี) =====
+        thumb_cols = st.columns(4)
+        for i in range(4):
+            with thumb_cols[i]:
+                # รูปที่ 2-5 (i+1 = 1,2,3,4)
+                idx = i + 1
+                if idx < len(images):
+                    url = images[idx]
+                    st.markdown(
+                        f'<div style="width:100%; aspect-ratio:1/1; '
+                        f'background:#1a1a1a; border-radius:4px; '
+                        f'overflow:hidden;">'
+                        f'<img src="{url}" '
+                        f'style="width:100%; height:100%; '
+                        f'object-fit:cover; display:block;"/>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    # placeholder เก็บ slot ให้สูงเท่ากัน
+                    st.markdown(
+                        '<div style="width:100%; aspect-ratio:1/1; '
+                        'background:rgba(255,255,255,0.02); '
+                        'border:1px dashed rgba(200,164,126,0.1); '
+                        'border-radius:4px;"></div>',
+                        unsafe_allow_html=True,
+                    )
 
-        # ===== ชื่อ =====
+        # caption จำนวนรูป (แสดงเสมอ)
+        st.caption(f"📷 {len(images)} รูป" if images else "📷 ไม่มีรูป")
+
+        # ===== ชื่อ — บรรทัดเดียว ตัดถ้ายาว =====
         st.markdown(
-            f'<div style="font-weight:600; font-size:14px; color:var(--slate-900); '
+            f'<div style="font-weight:500; font-size:15px; '
             f'white-space:nowrap; overflow:hidden; text-overflow:ellipsis; '
-            f'margin:8px 0 4px;" title="{eq.get("name", "-")}">'
+            f'margin:6px 0 4px;" title="{eq.get("name", "-")}">'
             f'{eq.get("name", "-")}</div>',
             unsafe_allow_html=True,
         )
 
-        # ===== SKU + หมวด + หน่วย — เป็น meta line =====
+        # ===== SKU + หมวด + หน่วย — บรรทัดเดียว =====
         sku = eq.get('sku') or '-'
         st.markdown(
-            f'<div style="font-size:11px; color:var(--slate-500); '
+            f'<div style="font-size:12px; color:#888; '
             f'margin-bottom:2px;">SKU: {sku}</div>'
-            f'<div style="font-size:11px; color:var(--slate-500);">'
-            f'📂 {eq.get("category", "-")} • 📐 {eq.get("unit", "ชิ้น")}</div>',
+            f'<div style="font-size:12px; color:#888;">'
+            f'📂 {eq.get("category", "-")}  |  📐 {eq.get("unit", "ชิ้น")}</div>',
             unsafe_allow_html=True,
         )
 
-        # ===== คำอธิบาย =====
+        # ===== คำอธิบาย — บังคับ 2 บรรทัด ตัดถ้ายาว =====
         desc = (eq.get('description') or '').strip()
-        if desc:
-            st.markdown(
-                f'<div style="font-size:11px; color:var(--slate-600); '
-                f'min-height:32px; max-height:32px; overflow:hidden; '
-                f'display:-webkit-box; -webkit-line-clamp:2; '
-                f'-webkit-box-orient:vertical; '
-                f'margin:6px 0;">{desc}</div>',
-                unsafe_allow_html=True,
-            )
-        else:
-            st.markdown('<div style="height:32px;"></div>',
-                        unsafe_allow_html=True)
+        st.markdown(
+            f'<div style="font-size:12px; color:#888; '
+            f'min-height:34px; max-height:34px; overflow:hidden; '
+            f'display:-webkit-box; -webkit-line-clamp:2; '
+            f'-webkit-box-orient:vertical; '
+            f'margin:6px 0;">'
+            f'{f"📝 {desc}" if desc else "&nbsp;"}'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
-        # ===== แถวราคา + Stock chip =====
-        emoji, cls, color, stock_label = _stock_status(eq.get('stock', 0))
-
-        # Stock chip colors
-        if cls == "out":
-            chip_bg = "var(--danger-soft)"
-            chip_color = "var(--danger)"
-            chip_border = "rgba(220, 38, 38, 0.2)"
-        elif cls == "low":
-            chip_bg = "var(--warning-soft)"
-            chip_color = "var(--warning)"
-            chip_border = "rgba(217, 119, 6, 0.2)"
-        else:
-            chip_bg = "var(--success-soft)"
-            chip_color = "var(--success)"
-            chip_border = "rgba(5, 150, 105, 0.2)"
-
+        # ===== แถวราคา + คงเหลือ =====
+        emoji, color, stock_label = _stock_status(eq.get('stock', 0))
         st.markdown(
             f'<div style="display:flex; justify-content:space-between; '
-            f'align-items:center; padding:8px 0 4px; '
-            f'border-top:1px solid var(--slate-200); margin-top:6px;">'
-            f'<span style="color:var(--brand-700); font-weight:700; font-size:14px;">'
-            f'฿{eq.get("last_cost", 0):,.0f}</span>'
-            f'<span style="background:{chip_bg}; color:{chip_color}; '
-            f'border:1px solid {chip_border}; padding:2px 8px; '
-            f'border-radius:10px; font-size:11px; font-weight:600;">'
-            f'📦 {stock_label}</span>'
+            f'align-items:center; padding:6px 0; '
+            f'border-top:1px solid #333;">'
+            f'<span style="color:#4A6FA5; font-weight:500;">'
+            f'💰 ฿{eq.get("last_cost", 0):,.2f}</span>'
+            f'<span style="color:{color}; font-size:12px;">'
+            f'{emoji} {stock_label}</span>'
             f'</div>',
             unsafe_allow_html=True,
         )
@@ -596,12 +576,7 @@ def render_reports():
         st.error("เฉพาะแอดมิน")
         return
 
-    st.markdown("""
-    <div class="page-title-block">
-        <div class="page-title-text">รายงาน + วิเคราะห์</div>
-        <div class="page-title-sub">ภาพรวมการสั่งซื้อ + Top supplier + Spending trends</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown("## 📈 รายงาน")
     pos = db.get_purchase_orders(role='admin')
     if not pos:
         show_empty_state(
@@ -808,12 +783,7 @@ def render_users():
         st.error("เฉพาะแอดมิน")
         return
 
-    st.markdown("""
-    <div class="page-title-block">
-        <div class="page-title-text">จัดการผู้ใช้</div>
-        <div class="page-title-sub">เพิ่ม / แก้ไข / รีเซ็ตรหัสผ่าน user ทั้งหมด</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown("## 👥 จัดการผู้ใช้")
 
     with st.expander("➕ เพิ่มผู้ใช้ใหม่"):
         with st.form("au", clear_on_submit=True):
@@ -903,12 +873,7 @@ def render_users():
 # ==================================================================
 
 def render_notifications():
-    st.markdown("""
-    <div class="page-title-block">
-        <div class="page-title-text">การแจ้งเตือน</div>
-        <div class="page-title-sub">ติดตามกิจกรรมในระบบทั้งหมด</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown("## 🔔 การแจ้งเตือน")
     user_id = uid()
     notifs = db.get_notifications(user_id)
     if not notifs:
@@ -1049,12 +1014,7 @@ def _render_approve_form(eq):
         st.session_state.pop('catalog_approve_id', None)
         st.rerun()
 
-    st.markdown("""
-    <div class="page-title-block">
-        <div class="page-title-text">อนุมัติเพิ่มเข้า Catalog</div>
-        <div class="page-title-sub">รายการที่ user เสนอ — ตรวจสอบก่อนเพิ่ม</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown("## ✅ อนุมัติเพิ่มเข้า Catalog")
     st.info(
         f"กำลังอนุมัติ **{eq.get('name', '-')}** ที่เสนอโดย "
         f"**{eq.get('suggested_by_name', '-')}** — กรอกข้อมูลให้ครบก่อนเพิ่มเข้า Catalog"
@@ -1204,12 +1164,7 @@ def render_settings():
         st.error("เฉพาะแอดมิน")
         return
 
-    st.markdown("""
-    <div class="page-title-block">
-        <div class="page-title-text">ตั้งค่าบริษัท</div>
-        <div class="page-title-sub">ข้อมูลที่แสดงใน PDF + ระบบ</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown("## ⚙️ ตั้งค่าบริษัท")
     st.caption("ข้อมูลที่แสดงใน PDF ใบ PO + ใบรับของ + ทั้งระบบ")
 
     # ดึงค่าปัจจุบัน
