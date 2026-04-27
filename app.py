@@ -28,9 +28,7 @@ st.set_page_config(
 )
 
 # Lab Parfumo Premium Styling
-st.markdown("""
-<meta name="color-scheme" content="light">
-<style>
+_LAB_PARFUMO_CSS = """<style>
 /* ============================================================ */
 /* Lab Parfumo PO Pro — B2B Design System                       */
 /* ============================================================ */
@@ -665,8 +663,8 @@ header[data-testid="stHeader"] { background: transparent !important; }
     .workflow-label { font-size: 10px; }
     .stButton button { min-height: 40px; font-size: 13px; }
 }
-</style>
-""", unsafe_allow_html=True)
+</style>"""
+st.markdown(_LAB_PARFUMO_CSS, unsafe_allow_html=True)
 
 
 def init_session():
