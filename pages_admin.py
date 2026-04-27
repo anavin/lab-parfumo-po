@@ -830,9 +830,28 @@ def render_users():
                 if not un or not pw or not fn:
                     st.error("กรุณากรอกข้อมูล")
                 else:
-                    if db.add_user(un, pw, fn, rl, em):
-                        st.success(f"เพิ่ม {un} แล้ว")
-                        st.rerun()
+                    try:
+                        if db.add_user(un, pw, fn, rl, em):
+                            # Toast popup แจ้งเตือนมุมขวาล่าง
+                            st.toast(f"✅ เพิ่ม {fn} สำเร็จ!", icon="🎉")
+                            # Balloons celebration
+                            st.balloons()
+                            # Success message ใน main area
+                            role_label = db.ROLES.get(rl, rl)
+                            st.success(
+                                f"🎉 **เพิ่มผู้ใช้สำเร็จ!**\n\n"
+                                f"- **ชื่อ:** {fn}\n"
+                                f"- **Username:** `{un}`\n"
+                                f"- **Role:** {role_label}\n"
+                                f"- **อีเมล:** {em or '—'}\n\n"
+                                f"⚠️ ครั้งแรกที่ login ระบบจะบังคับเปลี่ยนรหัสผ่าน"
+                            )
+                            # delay เล็กน้อยให้ user เห็น message ก่อน rerun
+                            import time
+                            time.sleep(2)
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ เพิ่มผู้ใช้ไม่สำเร็จ: {e}")
 
     st.divider()
     users = db.get_users()
