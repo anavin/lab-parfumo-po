@@ -913,6 +913,7 @@ def render_header():
         ]
         admin_modes = [
             ('equipment', '📦 Catalog'),
+            ('budget', '💰 งบ'),
             ('reports', '📈 รายงาน'),
             ('users', '👥 ผู้ใช้'),
             ('settings', '⚙️ ตั้งค่า'),
@@ -1689,6 +1690,12 @@ def main():
             st.error("❌ เฉพาะแอดมิน")
             return
         render_equipment()
+    elif mode == 'budget':
+        if not is_admin():
+            st.error("❌ เฉพาะแอดมิน")
+            return
+        from pages_budget import render_budget
+        render_budget()
     elif mode == 'reports':
         if not is_admin():
             st.error("❌ เฉพาะแอดมิน")
