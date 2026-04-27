@@ -851,13 +851,20 @@ def login_page():
                             else:
                                 st.error("❌ ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง")
 
-        with st.expander("ℹ️ บัญชีเริ่มต้น"):
-            st.code(
-                "admin / admin123     → แอดมิน\n"
-                "staff1 / staff123    → ผู้สั่ง",
-                language="text",
-            )
-            st.caption("⚠️ ครั้งแรก ระบบจะบังคับเปลี่ยนรหัสผ่าน")
+        # ===== บัญชีเริ่มต้น (จาก DB — admin แก้ได้ผ่าน Settings) =====
+        try:
+            settings = db.get_company_settings()
+            if settings.get('login_intro_visible', True):
+                title = settings.get('login_intro_title', 'ℹ️ บัญชีเริ่มต้น')
+                text = settings.get('login_intro_text', '')
+                note = settings.get('login_intro_note', '')
+                if text:
+                    with st.expander(title):
+                        st.code(text, language="text")
+                        if note:
+                            st.caption(note)
+        except Exception:
+            pass
 
 
 # ==================================================================

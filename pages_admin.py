@@ -1241,121 +1241,245 @@ def _render_approve_form(eq):
 # ==================================================================
 
 def render_settings():
-    """หน้าตั้งค่าบริษัท — ใช้ใน PDF / Header / Footer"""
+    """หน้าตั้งค่า — บริษัท + หน้า Login"""
     if not is_admin():
         st.error("เฉพาะแอดมิน")
         return
 
     st.markdown("""
     <div class="page-title-block">
-        <div class="page-title-text">ตั้งค่าบริษัท</div>
-        <div class="page-title-sub">ข้อมูลที่แสดงใน PDF + ระบบ</div>
+        <div class="page-title-text">ตั้งค่าระบบ</div>
+        <div class="page-title-sub">ข้อมูลบริษัท + ข้อความหน้า Login</div>
     </div>
     """, unsafe_allow_html=True)
-    st.caption("ข้อมูลที่แสดงใน PDF ใบ PO + ใบรับของ + ทั้งระบบ")
 
     # ดึงค่าปัจจุบัน
     info = db.get_company_settings()
 
-    with st.form("company_form"):
-        st.markdown("#### 🏢 ข้อมูลพื้นฐาน")
-        c1, c2 = st.columns(2)
-        with c1:
-            name = st.text_input(
-                "ชื่อบริษัท (อังกฤษ) *",
-                value=info.get('name', '') or '',
-                placeholder="Lab Parfumo Co., Ltd.",
-            )
-        with c2:
-            name_th = st.text_input(
-                "ชื่อบริษัท (ไทย)",
-                value=info.get('name_th', '') or '',
-                placeholder="บริษัท ทัช ไดเวอร์เจนซ์ จำกัด",
+    tab1, tab2 = st.tabs(["🏢 ข้อมูลบริษัท", "🔐 หน้า Login"])
+
+    # ============================================================
+    # TAB 1 — ข้อมูลบริษัท (เดิม)
+    # ============================================================
+    with tab1:
+        st.caption("ข้อมูลที่แสดงใน PDF ใบ PO + ใบรับของ + ทั้งระบบ")
+
+        with st.form("company_form"):
+            st.markdown("#### 🏢 ข้อมูลพื้นฐาน")
+            c1, c2 = st.columns(2)
+            with c1:
+                name = st.text_input(
+                    "ชื่อบริษัท (อังกฤษ) *",
+                    value=info.get('name', '') or '',
+                    placeholder="Lab Parfumo Co., Ltd.",
+                )
+            with c2:
+                name_th = st.text_input(
+                    "ชื่อบริษัท (ไทย)",
+                    value=info.get('name_th', '') or '',
+                    placeholder="บริษัท ทัช ไดเวอร์เจนซ์ จำกัด",
+                )
+
+            address = st.text_area(
+                "ที่อยู่",
+                value=info.get('address', '') or '',
+                placeholder="เลขที่ ... ถนน ... แขวง ... เขต ... กรุงเทพฯ 10000",
+                height=80,
             )
 
-        address = st.text_area(
-            "ที่อยู่",
-            value=info.get('address', '') or '',
-            placeholder="เลขที่ ... ถนน ... แขวง ... เขต ... กรุงเทพฯ 10000",
-            height=80,
+            st.markdown("#### 📞 ติดต่อ")
+            c3, c4 = st.columns(2)
+            with c3:
+                phone = st.text_input(
+                    "โทรศัพท์",
+                    value=info.get('phone', '') or '',
+                    placeholder="02-xxx-xxxx",
+                )
+            with c4:
+                email = st.text_input(
+                    "อีเมล",
+                    value=info.get('email', '') or '',
+                    placeholder="contact@labparfumo.com",
+                )
+
+            c5, c6 = st.columns(2)
+            with c5:
+                tax_id = st.text_input(
+                    "เลขผู้เสียภาษี",
+                    value=info.get('tax_id', '') or '',
+                    placeholder="0-1055-64xxx-xx-x",
+                    help="แสดงใน PDF ใบ PO",
+                )
+            with c6:
+                website = st.text_input(
+                    "เว็บไซต์",
+                    value=info.get('website', '') or '',
+                    placeholder="www.labparfumo.com",
+                )
+
+            st.markdown("---")
+            bc1, bc2 = st.columns([1, 4])
+            with bc1:
+                submit = st.form_submit_button(
+                    "💾 บันทึก",
+                    type="primary",
+                    use_container_width=True,
+                )
+            with bc2:
+                st.caption(
+                    f"📅 อัปเดตล่าสุด: {fmt_dt(info.get('updated_at')) if info.get('updated_at') else 'ยังไม่เคย'}"
+                    f" • โดย: {info.get('updated_by_name') or '-'}"
+                )
+
+            if submit:
+                if not name.strip():
+                    st.error("กรุณากรอกชื่อบริษัท")
+                else:
+                    if db.update_company_settings(
+                        name=name.strip(),
+                        name_th=name_th.strip(),
+                        address=address.strip(),
+                        phone=phone.strip(),
+                        email=email.strip(),
+                        tax_id=tax_id.strip(),
+                        website=website.strip(),
+                        # preserve login intro
+                        login_intro_visible=info.get('login_intro_visible', True),
+                        login_intro_title=info.get('login_intro_title', '') or '',
+                        login_intro_text=info.get('login_intro_text', '') or '',
+                        login_intro_note=info.get('login_intro_note', '') or '',
+                        updated_by_name=uname(),
+                    ):
+                        st.toast("✅ บันทึกข้อมูลบริษัทแล้ว", icon="🏢")
+                        st.success("✅ บันทึกแล้ว — PDF จะใช้ข้อมูลใหม่ครั้งต่อไป")
+                        import time
+                        time.sleep(1.2)
+                        st.rerun()
+
+        # Preview ตัวอย่าง
+        st.markdown("---")
+        st.markdown("#### 👁️ ตัวอย่างที่แสดงใน PDF")
+        with st.container(border=True):
+            st.markdown(f"### {info.get('name', '-')}")
+            if info.get('name_th'):
+                st.caption(info['name_th'])
+            if info.get('address'):
+                st.caption(info['address'])
+            contact = []
+            if info.get('phone'):
+                contact.append(f"โทร: {info['phone']}")
+            if info.get('email'):
+                contact.append(f"อีเมล: {info['email']}")
+            if contact:
+                st.caption(" | ".join(contact))
+            if info.get('tax_id'):
+                st.caption(f"เลขผู้เสียภาษี: {info['tax_id']}")
+
+    # ============================================================
+    # TAB 2 — หน้า Login (ข้อความบัญชีเริ่มต้น)
+    # ============================================================
+    with tab2:
+        st.caption(
+            "ตั้งค่าข้อความที่แสดงในหน้า Login — เช่น บัญชีเริ่มต้นสำหรับให้ user ใหม่ทดสอบ"
         )
 
-        st.markdown("#### 📞 ติดต่อ")
-        c3, c4 = st.columns(2)
-        with c3:
-            phone = st.text_input(
-                "โทรศัพท์",
-                value=info.get('phone', '') or '',
-                placeholder="02-xxx-xxxx",
-            )
-        with c4:
-            email = st.text_input(
-                "อีเมล",
-                value=info.get('email', '') or '',
-                placeholder="contact@labparfumo.com",
+        st.info(
+            "💡 **เคล็ดลับ:** หลังจากที่ user ทุกคนตั้งรหัสของตัวเองแล้ว "
+            "อาจจะ**ปิดข้อความนี้** เพื่อความปลอดภัย"
+        )
+
+        with st.form("login_intro_form"):
+            visible = st.checkbox(
+                "แสดงข้อความบนหน้า Login",
+                value=info.get('login_intro_visible', True),
+                help="ถ้าปิด — จะไม่มีกล่อง 'บัญชีเริ่มต้น' ในหน้า Login",
             )
 
-        c5, c6 = st.columns(2)
-        with c5:
-            tax_id = st.text_input(
-                "เลขผู้เสียภาษี",
-                value=info.get('tax_id', '') or '',
-                placeholder="0-1055-64xxx-xx-x",
-                help="แสดงใน PDF ใบ PO",
-            )
-        with c6:
-            website = st.text_input(
-                "เว็บไซต์",
-                value=info.get('website', '') or '',
-                placeholder="www.labparfumo.com",
+            intro_title = st.text_input(
+                "หัวข้อกล่อง",
+                value=info.get('login_intro_title', 'ℹ️ บัญชีเริ่มต้น') or '',
+                placeholder="ℹ️ บัญชีเริ่มต้น",
+                help="หัวข้อที่แสดงเป็น expander บนหน้า login",
             )
 
-        st.markdown("---")
-        bc1, bc2 = st.columns([1, 4])
-        with bc1:
-            submit = st.form_submit_button(
-                "💾 บันทึก",
-                type="primary",
-                use_container_width=True,
-            )
-        with bc2:
-            st.caption(
-                f"📅 อัปเดตล่าสุด: {fmt_dt(info.get('updated_at')) if info.get('updated_at') else 'ยังไม่เคย'}"
-                f" • โดย: {info.get('updated_by_name') or '-'}"
+            intro_text = st.text_area(
+                "เนื้อหา (รายชื่อบัญชี / ข้อความ)",
+                value=info.get('login_intro_text', '') or '',
+                placeholder=("admin / admin123     → แอดมิน\n"
+                              "staff1 / staff123    → ผู้สั่ง"),
+                height=120,
+                help="เขียนเป็นบรรทัดได้หลายบรรทัด — แสดงเป็นกล่อง code",
             )
 
-        if submit:
-            if not name.strip():
-                st.error("กรุณากรอกชื่อบริษัท")
-            else:
+            intro_note = st.text_input(
+                "หมายเหตุ (caption ด้านล่าง)",
+                value=info.get('login_intro_note', '') or '',
+                placeholder="⚠️ ครั้งแรก ระบบจะบังคับเปลี่ยนรหัสผ่าน",
+            )
+
+            st.markdown("---")
+            cc1, cc2 = st.columns([1, 1])
+            with cc1:
+                submit_login = st.form_submit_button(
+                    "💾 บันทึก",
+                    type="primary",
+                    use_container_width=True,
+                )
+            with cc2:
+                clear_btn = st.form_submit_button(
+                    "🗑️ ล้างข้อความทั้งหมด",
+                    use_container_width=True,
+                    help="ลบข้อความ + ซ่อนกล่อง",
+                )
+
+            if submit_login:
                 if db.update_company_settings(
-                    name=name.strip(),
-                    name_th=name_th.strip(),
-                    address=address.strip(),
-                    phone=phone.strip(),
-                    email=email.strip(),
-                    tax_id=tax_id.strip(),
-                    website=website.strip(),
+                    name=info.get('name', '') or '',
+                    name_th=info.get('name_th', '') or '',
+                    address=info.get('address', '') or '',
+                    phone=info.get('phone', '') or '',
+                    email=info.get('email', '') or '',
+                    tax_id=info.get('tax_id', '') or '',
+                    website=info.get('website', '') or '',
+                    login_intro_visible=visible,
+                    login_intro_title=intro_title.strip(),
+                    login_intro_text=intro_text.strip(),
+                    login_intro_note=intro_note.strip(),
                     updated_by_name=uname(),
                 ):
-                    st.success("✅ บันทึกแล้ว — PDF จะใช้ข้อมูลใหม่ครั้งต่อไป")
+                    st.toast("✅ บันทึกข้อความหน้า Login แล้ว", icon="🔐")
+                    st.success("✅ บันทึกแล้ว — เปิดหน้า Login ใหม่จะเห็นการเปลี่ยนแปลง")
+                    import time
+                    time.sleep(1.2)
                     st.rerun()
 
-    # Preview ตัวอย่าง
-    st.markdown("---")
-    st.markdown("#### 👁️ ตัวอย่างที่แสดงใน PDF")
-    with st.container(border=True):
-        st.markdown(f"### {info.get('name', '-')}")
-        if info.get('name_th'):
-            st.caption(info['name_th'])
-        if info.get('address'):
-            st.caption(info['address'])
-        contact = []
-        if info.get('phone'):
-            contact.append(f"โทร: {info['phone']}")
-        if info.get('email'):
-            contact.append(f"อีเมล: {info['email']}")
-        if contact:
-            st.caption(" | ".join(contact))
-        if info.get('tax_id'):
-            st.caption(f"เลขผู้เสียภาษี: {info['tax_id']}")
+            if clear_btn:
+                if db.update_company_settings(
+                    name=info.get('name', '') or '',
+                    name_th=info.get('name_th', '') or '',
+                    address=info.get('address', '') or '',
+                    phone=info.get('phone', '') or '',
+                    email=info.get('email', '') or '',
+                    tax_id=info.get('tax_id', '') or '',
+                    website=info.get('website', '') or '',
+                    login_intro_visible=False,
+                    login_intro_title='',
+                    login_intro_text='',
+                    login_intro_note='',
+                    updated_by_name=uname(),
+                ):
+                    st.toast("🗑️ ล้างข้อความหน้า Login แล้ว", icon="✅")
+                    import time
+                    time.sleep(1.0)
+                    st.rerun()
+
+        # Preview
+        st.markdown("---")
+        st.markdown("#### 👁️ ตัวอย่างที่จะแสดงในหน้า Login")
+        if info.get('login_intro_visible', True) and info.get('login_intro_text'):
+            with st.expander(info.get('login_intro_title', 'ℹ️ บัญชีเริ่มต้น')):
+                st.code(info.get('login_intro_text', ''), language="text")
+                if info.get('login_intro_note'):
+                    st.caption(info['login_intro_note'])
+        else:
+            st.caption("👁️‍🗨️ ปิดอยู่ — ไม่แสดงในหน้า Login")

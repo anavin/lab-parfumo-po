@@ -225,7 +225,16 @@ def get_company_settings():
     try:
         r = get_supabase().table("company_settings").select("*").eq("id", 1).execute()
         if r.data:
-            return r.data[0]
+            data = r.data[0]
+            # default ถ้า migration ยังไม่ได้รัน
+            data.setdefault('login_intro_visible', True)
+            data.setdefault('login_intro_title', 'ℹ️ บัญชีเริ่มต้น')
+            data.setdefault('login_intro_text',
+                              'admin / admin123     → แอดมิน\n'
+                              'staff1 / staff123    → ผู้สั่ง')
+            data.setdefault('login_intro_note',
+                              '⚠️ ครั้งแรก ระบบจะบังคับเปลี่ยนรหัสผ่าน')
+            return data
     except Exception:
         pass
     # fallback ถ้ายังไม่ได้ migrate
@@ -238,11 +247,18 @@ def get_company_settings():
         'tax_id': '',
         'website': 'www.labparfumo.com',
         'logo_url': '',
+        'login_intro_visible': True,
+        'login_intro_title': 'ℹ️ บัญชีเริ่มต้น',
+        'login_intro_text': 'admin / admin123     → แอดมิน\n'
+                              'staff1 / staff123    → ผู้สั่ง',
+        'login_intro_note': '⚠️ ครั้งแรก ระบบจะบังคับเปลี่ยนรหัสผ่าน',
     }
 
 
 def update_company_settings(name="", name_th="", address="", phone="",
                               email="", tax_id="", website="", logo_url="",
+                              login_intro_visible=True, login_intro_title="",
+                              login_intro_text="", login_intro_note="",
                               updated_by_name=""):
     """อัปเดตข้อมูลบริษัท (admin)"""
     try:
@@ -254,6 +270,10 @@ def update_company_settings(name="", name_th="", address="", phone="",
             "address": address, "phone": phone,
             "email": email, "tax_id": tax_id,
             "website": website, "logo_url": logo_url,
+            "login_intro_visible": login_intro_visible,
+            "login_intro_title": login_intro_title,
+            "login_intro_text": login_intro_text,
+            "login_intro_note": login_intro_note,
             "updated_at": datetime.now().isoformat(),
             "updated_by_name": updated_by_name,
         }
