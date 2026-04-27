@@ -339,6 +339,7 @@ def cleanup_expired_sessions(max_idle_minutes: int = 60):
 # ==================================================================
 # Users
 # ==================================================================
+@st.cache_data(ttl=300, show_spinner=False)  # 5 นาที
 def get_users() -> List[dict]:
     try:
         return (get_supabase()
@@ -353,7 +354,7 @@ def get_users() -> List[dict]:
 
 
 def get_all_users_including_inactive() -> List[dict]:
-    """สำหรับ admin ดูทั้งหมด (รวม inactive)"""
+    """สำหรับ admin ดูทั้งหมด (รวม inactive) — ไม่ cache เพราะใช้น้อย"""
     try:
         return (get_supabase().table("users").select("*")
                 .order("created_at").execute().data or [])
@@ -377,7 +378,7 @@ def add_user(username: str, password: str, full_name: str,
         st.error(f"❌ {msg}")
         return None
     try:
-        return get_supabase().table("users").insert({
+        result = get_supabase().table("users").insert({
             "username": username,
             "password_hash": hash_password(password),
             "full_name": full_name,
@@ -385,6 +386,13 @@ def add_user(username: str, password: str, full_name: str,
             "email": email,
             "must_change_password": True,
         }).execute().data[0]
+        # ⭐ Invalidate user cache
+        try:
+            get_users.clear()
+            get_admins.clear()
+        except Exception:
+            pass
+        return result
     except Exception as e:
         log.exception("add_user failed")
         # Don't leak DB error details
@@ -409,6 +417,12 @@ def update_user(uid: str, **fields) -> bool:
             fields["must_change_password"] = bool(force_change)
             fields["password_changed_at"] = now_utc().isoformat()
         get_supabase().table("users").update(fields).eq("id", uid).execute()
+        # ⭐ Invalidate cache (role อาจเปลี่ยน → admins ก็ต้อง refresh)
+        try:
+            get_users.clear()
+            get_admins.clear()
+        except Exception:
+            pass
         return True
     except Exception:
         log.exception("update_user failed")
@@ -431,6 +445,12 @@ def delete_user(uid: str) -> bool:
             "is_active": False,
             "username": f"_del_{uid[:8]}_{int(now_utc().timestamp())}",
         }).eq("id", uid).execute()
+        # ⭐ Invalidate cache
+        try:
+            get_users.clear()
+            get_admins.clear()
+        except Exception:
+            pass
         return True
     except Exception:
         log.exception("delete_user failed")
@@ -440,6 +460,7 @@ def delete_user(uid: str) -> bool:
 # ==================================================================
 # Company Settings
 # ==================================================================
+@st.cache_data(ttl=600, show_spinner=False)  # 10 นาที — เปลี่ยนน้อยมาก
 def get_company_settings() -> dict:
     defaults = {
         'name': 'Lab Parfumo',
@@ -466,7 +487,7 @@ def get_company_settings() -> dict:
 
 def update_company_settings(**fields) -> bool:
     """อัปเดตข้อมูลบริษัท (admin)
-    
+
     ⭐ UPDATED: ใช้ kwargs ทั้งหมด → ไม่ต้องส่ง field ทุกตัว"""
     try:
         sb = get_supabase()
@@ -484,6 +505,11 @@ def update_company_settings(**fields) -> bool:
             if k in allowed:
                 payload[k] = v
         sb.table("company_settings").upsert(payload).execute()
+        # ⭐ Invalidate cache
+        try:
+            get_company_settings.clear()
+        except Exception:
+            pass
         return True
     except Exception:
         log.exception("update_company_settings failed")
@@ -494,6 +520,7 @@ def update_company_settings(**fields) -> bool:
 # ==================================================================
 # Notifications & admin notification helpers
 # ==================================================================
+@st.cache_data(ttl=600, show_spinner=False)  # 10 นาที — admin list เปลี่ยนน้อย
 def get_admins() -> List[dict]:
     try:
         return (get_supabase().table("users").select("*")
@@ -582,6 +609,7 @@ def check_and_notify_stale_pos() -> int:
 # ==================================================================
 # Categories
 # ==================================================================
+@st.cache_data(ttl=600, show_spinner=False)  # 10 นาที — categories เปลี่ยนน้อยมาก
 def get_categories() -> List[str]:
     try:
         sb = get_supabase()
@@ -605,6 +633,7 @@ def get_categories() -> List[str]:
         return DEFAULT_CATEGORIES.copy()
 
 
+@st.cache_data(ttl=600, show_spinner=False)
 def get_categories_with_order() -> List[dict]:
     try:
         sb = get_supabase()
@@ -616,6 +645,15 @@ def get_categories_with_order() -> List[dict]:
         return r.data or []
     except Exception:
         return []
+
+
+def _invalidate_category_cache():
+    """ยกเลิก cache ของ categories ทั้งหมด (เรียกหลัง add/update/delete)"""
+    try:
+        get_categories.clear()
+        get_categories_with_order.clear()
+    except Exception:
+        pass
 
 
 def add_category(name: str) -> bool:
@@ -634,6 +672,7 @@ def add_category(name: str) -> bool:
             }).execute()
         except Exception:
             sb.table("equipment_categories").insert({"name": name}).execute()
+        _invalidate_category_cache()
         return True
     except Exception:
         log.exception("add_category failed")
@@ -662,6 +701,7 @@ def move_category(name: str, direction: str) -> bool:
         ord_b = b.get('display_order', target_idx + 1)
         sb.table("equipment_categories").update({"display_order": ord_b}).eq("id", a['id']).execute()
         sb.table("equipment_categories").update({"display_order": ord_a}).eq("id", b['id']).execute()
+        _invalidate_category_cache()
         return True
     except Exception:
         log.exception("move_category failed")
@@ -673,6 +713,8 @@ def update_category(old_name: str, new_name: str) -> bool:
         sb = get_supabase()
         sb.table("equipment_categories").update({"name": new_name}).eq("name", old_name).execute()
         sb.table("equipment").update({"category": new_name}).eq("category", old_name).execute()
+        _invalidate_category_cache()
+        _invalidate_equipment_cache()
         return True
     except Exception:
         log.exception("update_category failed")
@@ -687,6 +729,7 @@ def delete_category(name: str) -> tuple[bool, str]:
         if c.count and c.count > 0:
             return False, f"มีสินค้า {c.count} รายการในหมวดนี้"
         sb.table("equipment_categories").delete().eq("name", name).execute()
+        _invalidate_category_cache()
         return True, "ลบเรียบร้อย"
     except Exception as e:
         log.exception("delete_category failed")
@@ -810,6 +853,7 @@ def remove_po_attachment(po_id: str, attachment_url: str) -> bool:
 # ==================================================================
 # Equipment
 # ==================================================================
+@st.cache_data(ttl=120, show_spinner=False)  # 2 นาที — equipment list อ่านบ่อยมาก
 def get_equipment_list(active_only: bool = False,
                        include_pending: bool = False,
                        include_rejected: bool = False) -> List[dict]:
@@ -829,6 +873,7 @@ def get_equipment_list(active_only: bool = False,
         return []
 
 
+@st.cache_data(ttl=60, show_spinner=False)  # 1 นาที — pending list refresh เร็วกว่า
 def get_pending_equipment() -> List[dict]:
     try:
         sb = get_supabase()
@@ -837,6 +882,16 @@ def get_pending_equipment() -> List[dict]:
                 .order("suggested_at", desc=True).execute().data or [])
     except Exception:
         return []
+
+
+def _invalidate_equipment_cache():
+    """ยกเลิก cache ของ equipment ทั้งหมด"""
+    try:
+        get_equipment_list.clear()
+        get_pending_equipment.clear()
+        get_reorder_alerts.clear()
+    except Exception:
+        pass
 
 
 def suggest_equipment_from_po(name: str, suggested_by: str,
@@ -864,6 +919,7 @@ def suggest_equipment_from_po(name: str, suggested_by: str,
             "suggested_notes": suggested_notes,
         }
         r = sb.table("equipment").insert(payload).execute()
+        _invalidate_equipment_cache()
         return r.data[0] if r.data else None
     except Exception:
         log.exception("suggest_equipment_from_po failed")
@@ -885,6 +941,7 @@ def approve_equipment(eq_id: str, sku: str, name: str, category: str,
             "approved_by_name": approved_by_name,
             "approved_at": now_utc().isoformat(),
         }).eq("id", eq_id).execute()
+        _invalidate_equipment_cache()
         return True
     except Exception:
         log.exception("approve_equipment failed")
@@ -894,7 +951,7 @@ def approve_equipment(eq_id: str, sku: str, name: str, category: str,
 def reject_equipment(eq_id: str, reason: str = "",
                      admin_name: str = "") -> bool:
     """⭐ Soft reject — รักษาประวัติ + เรียกคืนได้
-    
+
     เปลี่ยนเป็น soft reject แทน DELETE
     """
     try:
@@ -906,6 +963,7 @@ def reject_equipment(eq_id: str, reason: str = "",
             "rejected_at": now_utc().isoformat(),
             "is_active": False,  # ซ่อนออกจาก catalog
         }).eq("id", eq_id).execute()
+        _invalidate_equipment_cache()
         return True
     except Exception:
         log.exception("reject_equipment failed")
@@ -930,7 +988,7 @@ def add_equipment(name: str, category: str, unit: str = "ชิ้น",
         if image_url and image_url not in urls_list:
             urls_list.insert(0, image_url)
         primary = urls_list[0] if urls_list else None
-        return get_supabase().table("equipment").insert({
+        result = get_supabase().table("equipment").insert({
             "name": name, "category": category, "unit": unit, "sku": sku,
             "description": description, "last_cost": float(last_cost),
             "stock": int(stock),
@@ -939,6 +997,8 @@ def add_equipment(name: str, category: str, unit: str = "ชิ้น",
             "image_urls": urls_list,
             "is_active": True,
         }).execute().data[0]
+        _invalidate_equipment_cache()
+        return result
     except Exception:
         log.exception("add_equipment failed")
         st.error("⚠️ เพิ่มสินค้าไม่สำเร็จ")
@@ -957,6 +1017,7 @@ def update_equipment(eid: str, **fields) -> bool:
             urls = fields["image_urls"] or []
             fields["image_url"] = urls[0] if urls else None
         get_supabase().table("equipment").update(fields).eq("id", eid).execute()
+        _invalidate_equipment_cache()
         return True
     except Exception:
         log.exception("update_equipment failed")
@@ -998,6 +1059,7 @@ def delete_equipment(eid: str) -> bool:
         get_supabase().table("equipment").update({
             "is_active": False,
         }).eq("id", eid).execute()
+        _invalidate_equipment_cache()
         return True
     except Exception:
         log.exception("delete_equipment failed")
@@ -1191,6 +1253,7 @@ def get_low_stock_equipment(threshold: int = 10) -> List[dict]:
         return []
 
 
+@st.cache_data(ttl=120, show_spinner=False)
 def get_reorder_alerts() -> List[dict]:
     """ดึงสินค้าที่ stock <= reorder_level (ต้อง reorder_level > 0)
     ใช้บน dashboard insight + แสดง badge ในหน้าเบิก/catalog
@@ -1239,6 +1302,8 @@ def bulk_approve_equipment(eq_ids: List[str], approved_by_name: str = "",
         except Exception:
             log.exception(f"bulk_approve_equipment failed for {eq_id}")
             fail += 1
+    if success:
+        _invalidate_equipment_cache()
     return success, fail
 
 
@@ -1252,9 +1317,21 @@ def bulk_reject_equipment(eq_ids: List[str], reason: str = "",
             success += 1
         else:
             fail += 1
+    # reject_equipment เรียก invalidate ภายในแล้ว แต่เรียกซ้ำเพื่อชัดเจน
+    if success:
+        _invalidate_equipment_cache()
     return success, fail
 
 
+def _invalidate_supplier_cache():
+    """ยกเลิก cache ของ supplier history (เรียกหลัง procurement update)"""
+    try:
+        get_supplier_history.clear()
+    except Exception:
+        pass
+
+
+@st.cache_data(ttl=300, show_spinner=False)  # 5 นาที — supplier list เปลี่ยนเมื่อมี PO ใหม่
 def get_supplier_history() -> List[dict]:
     """ดึง supplier ที่เคยใช้ พร้อมข้อมูล context (ครั้งล่าสุด, ติดต่อ)
     return list ของ {name, last_contact, last_used, po_count}
@@ -1380,6 +1457,8 @@ def create_withdrawal(equipment_id: str, qty, purpose: str,
             payload["withdrawn_at"] = now_utc().isoformat()
 
         r = sb.table("withdrawals").insert(payload).execute()
+        # ⭐ stock เปลี่ยน → invalidate equipment cache
+        _invalidate_equipment_cache()
         return r.data[0] if r.data else None
 
     except Exception:
@@ -1429,6 +1508,8 @@ def delete_withdrawal(withdrawal_id: str, restore_stock: bool = True) -> bool:
                     new_stock = int(cur + float(w.get('qty', 0) or 0))
                     sb.table("equipment").update({"stock": new_stock}).eq("id", w['equipment_id']).execute()
         sb.table("withdrawals").delete().eq("id", withdrawal_id).execute()
+        if restore_stock:
+            _invalidate_equipment_cache()
         return True
     except Exception:
         log.exception("delete_withdrawal failed")
@@ -1503,6 +1584,9 @@ def update_po_procurement(po_id: str, supplier_name: str,
         for it in items_with_prices:
             if it.get("equipment_id") and it.get("unit_price", 0) > 0:
                 update_equipment(it["equipment_id"], last_cost=it["unit_price"])
+
+        # ⭐ Invalidate cache (supplier list อาจมีตัวใหม่)
+        _invalidate_supplier_cache()
 
         log_activity(po_id, user_name, "admin", "ordered",
                      f"สั่งกับ {supplier_name} | คาดได้ {expected_date or '-'}")

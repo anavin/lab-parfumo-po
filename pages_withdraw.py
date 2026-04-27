@@ -122,7 +122,7 @@ def _render_withdraw_card(eq):
                 f'<div style="width:100%; aspect-ratio:1/1; '
                 f'background:#F4F6FA; border-radius:8px; overflow:hidden; '
                 f'margin-bottom:8px;">'
-                f'<img src="{images[0]}" '
+                f'<img src="{images[0]}" loading="lazy" '
                 f'style="width:100%; height:100%; object-fit:cover;"/>'
                 f'</div>',
                 unsafe_allow_html=True,

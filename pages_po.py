@@ -382,13 +382,21 @@ def render_po_list():
         filtered = sorted(filtered,
                           key=lambda p: (p.get('expected_date') or '9999-12-31'))
 
-    # ===== Caption + Export buttons =====
-    cap_c1, cap_c2, cap_c3 = st.columns([3, 1, 1])
+    # ===== Caption + Export buttons + Page size =====
+    cap_c1, cap_c2, cap_c3, cap_c4 = st.columns([2, 1, 1, 1])
     with cap_c1:
         st.caption(f"พบ **{len(filtered)}** ใบ")
+    with cap_c2:
+        page_size = st.selectbox(
+            "ต่อหน้า",
+            [25, 50, 100, "ทั้งหมด"],
+            index=0,
+            key="po_list_page_size",
+            label_visibility="collapsed",
+        )
     if filtered:
         now_str = datetime.now().strftime('%Y%m%d_%H%M')
-        with cap_c2:
+        with cap_c3:
             try:
                 csv_bytes = po_list_to_csv(filtered)
                 st.download_button(
@@ -401,7 +409,7 @@ def render_po_list():
                 )
             except Exception:
                 st.caption("CSV ไม่พร้อม")
-        with cap_c3:
+        with cap_c4:
             try:
                 xlsx_bytes = po_list_to_xlsx(filtered)
                 if xlsx_bytes:
@@ -416,8 +424,58 @@ def render_po_list():
             except Exception:
                 pass
 
+    # ===== Pagination =====
+    if isinstance(page_size, int):
+        total = len(filtered)
+        n_pages = max(1, (total + page_size - 1) // page_size)
+        page_key = 'po_list_page'
+        cur_page = st.session_state.get(page_key, 1)
+        # clamp page เข้ากับขอบเขตปัจจุบัน (กรณี filter เปลี่ยน)
+        cur_page = max(1, min(cur_page, n_pages))
+        if n_pages > 1:
+            pc1, pc2, pc3, pc4, pc5 = st.columns([1, 1, 3, 1, 1])
+            with pc1:
+                if st.button("⏮ แรก", use_container_width=True,
+                              disabled=(cur_page == 1),
+                              key="page_first"):
+                    st.session_state[page_key] = 1
+                    st.rerun()
+            with pc2:
+                if st.button("◀ ก่อน", use_container_width=True,
+                              disabled=(cur_page == 1),
+                              key="page_prev"):
+                    st.session_state[page_key] = cur_page - 1
+                    st.rerun()
+            with pc3:
+                start = (cur_page - 1) * page_size + 1
+                end = min(cur_page * page_size, total)
+                st.markdown(
+                    f"<div style='text-align:center; padding-top:8px; "
+                    f"color:var(--slate-600); font-weight:500;'>"
+                    f"แสดง {start}-{end} จาก {total} • หน้า {cur_page}/{n_pages}"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+            with pc4:
+                if st.button("ถัดไป ▶", use_container_width=True,
+                              disabled=(cur_page == n_pages),
+                              key="page_next"):
+                    st.session_state[page_key] = cur_page + 1
+                    st.rerun()
+            with pc5:
+                if st.button("ท้าย ⏭", use_container_width=True,
+                              disabled=(cur_page == n_pages),
+                              key="page_last"):
+                    st.session_state[page_key] = n_pages
+                    st.rerun()
+        # slice ข้อมูลตาม page
+        start_idx = (cur_page - 1) * page_size
+        page_items = filtered[start_idx:start_idx + page_size]
+    else:
+        page_items = filtered
+
     # ===== Compact PO rows =====
-    for po in filtered:
+    for po in page_items:
         n_items = len(po.get('items', []))
         items_preview = ", ".join(
             (i.get('name', '') for i in po.get('items', [])[:2])
@@ -822,7 +880,7 @@ def _render_eq_card(eq, is_selected):
                 f'background:var(--slate-100); border-radius:8px; overflow:hidden; '
                 f'display:flex; align-items:center; justify-content:center; '
                 f'border:1px solid var(--slate-200);">'
-                f'<img src="{primary}" '
+                f'<img src="{primary}" loading="lazy" '
                 f'style="width:100%; height:100%; object-fit:cover; display:block;" '
                 f'onerror="this.style.display=\'none\'; '
                 f'this.parentElement.innerHTML=\'<span style=&quot;font-size:42px&quot;>🧴</span>\';"/>'

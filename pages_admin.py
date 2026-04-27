@@ -387,7 +387,7 @@ def _render_eq_admin_card(eq):
                 f'background:var(--slate-100); border-radius:10px; overflow:hidden; '
                 f'display:flex; align-items:center; justify-content:center; '
                 f'margin-bottom:8px; border:1px solid var(--slate-200);">'
-                f'<img src="{primary_url}" '
+                f'<img src="{primary_url}" loading="lazy" '
                 f'style="width:100%; height:100%; object-fit:cover; '
                 f'display:block;" '
                 f'onerror="this.style.display=\'none\'; '
@@ -417,7 +417,7 @@ def _render_eq_admin_card(eq):
                             f'<div style="width:100%; aspect-ratio:1/1; '
                             f'background:var(--slate-100); border-radius:6px; '
                             f'overflow:hidden; border:1px solid var(--slate-200);">'
-                            f'<img src="{url}" '
+                            f'<img src="{url}" loading="lazy" '
                             f'style="width:100%; height:100%; '
                             f'object-fit:cover; display:block;"/>'
                             f'</div>',
