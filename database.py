@@ -369,6 +369,9 @@ def add_user(username, password, full_name, role="requester", email=""):
 
 def update_user(uid, **fields):
     try:
+        # extract custom flags
+        force_change = fields.pop("force_change_password", False)
+
         if "password" in fields:
             new_pwd = fields.pop("password")
             user = get_user(uid)
@@ -378,7 +381,9 @@ def update_user(uid, **fields):
                 st.error(f"❌ {msg}")
                 return False
             fields["password_hash"] = hash_password(new_pwd)
-            fields["must_change_password"] = False
+            # ถ้า admin reset → บังคับให้ user เปลี่ยนเองครั้งถัดไป
+            # ถ้า user เปลี่ยนเอง → ไม่บังคับ
+            fields["must_change_password"] = bool(force_change)
             fields["password_changed_at"] = datetime.now().isoformat()
         get_supabase().table("users").update(fields).eq("id", uid).execute()
         return True

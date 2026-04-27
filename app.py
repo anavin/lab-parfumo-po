@@ -27,7 +27,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# Lab Parfumo Premium Styling
+# Lab Parfumo Premium Styling — use st.html for proper CSS injection
 _LAB_PARFUMO_CSS = """<style>
 /* ============================================================ */
 /* Lab Parfumo PO Pro — B2B Design System                       */
@@ -664,7 +664,11 @@ header[data-testid="stHeader"] { background: transparent !important; }
     .stButton button { min-height: 40px; font-size: 13px; }
 }
 </style>"""
-st.markdown(_LAB_PARFUMO_CSS, unsafe_allow_html=True)
+try:
+    st.html(_LAB_PARFUMO_CSS)
+except AttributeError:
+    # Fallback for older Streamlit
+    st.markdown(_LAB_PARFUMO_CSS, unsafe_allow_html=True)
 
 
 def init_session():
@@ -1497,56 +1501,103 @@ def check_session_timeout():
 
 
 def force_change_password_page():
-    """หน้าบังคับเปลี่ยนรหัสผ่านครั้งแรก"""
+    """หน้าบังคับเปลี่ยนรหัสผ่านครั้งแรก — B2B style"""
     user = st.session_state.get('user', {})
 
-    st.markdown("""
-    <div class="login-splash">
-        <div class="login-logo">🔐</div>
-        <div class="login-title">เปลี่ยนรหัสผ่าน</div>
-        <div class="login-subtitle">บัญชีนี้ใช้งานครั้งแรก กรุณาตั้งรหัสใหม่</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    c1, c2, c3 = st.columns([1, 2, 1])
+    c1, c2, c3 = st.columns([1, 1.4, 1])
     with c2:
-        st.info(f"👤 บัญชี: **{user.get('username', '-')}** ({user.get('full_name', '-')})")
+        st.markdown("""
+        <div style="text-align:center; padding:40px 0 24px;">
+            <div style="width:64px; height:64px; margin:0 auto 16px;
+                        background:linear-gradient(135deg, #D97706, #B45309);
+                        border-radius:16px; display:flex; align-items:center;
+                        justify-content:center; font-size:32px;
+                        box-shadow:0 4px 12px rgba(217, 119, 6, 0.3);">🔐</div>
+            <div style="font-size:24px; font-weight:700; color:#1F2937;
+                        margin-bottom:4px;">เปลี่ยนรหัสผ่าน</div>
+            <div style="font-size:13px; color:#6B7280;">
+                จำเป็นต้องตั้งรหัสใหม่ก่อนเริ่มใช้งาน
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-        with st.form("force_pwd_form"):
-            new_pwd = st.text_input(
-                "รหัสผ่านใหม่ *",
-                type="password",
-                placeholder="อย่างน้อย 8 ตัว มีตัวอักษร + ตัวเลข",
-            )
-            confirm_pwd = st.text_input(
-                "ยืนยันรหัสผ่านใหม่ *",
-                type="password",
-            )
+        # ข้อมูล user
+        st.markdown(f"""
+        <div style="background:#FFFBEB; border:1px solid rgba(217, 119, 6, 0.2);
+                    border-radius:10px; padding:12px 16px; margin-bottom:16px;
+                    display:flex; align-items:center; gap:12px;">
+            <div style="width:32px; height:32px; background:#D97706; color:white;
+                        border-radius:50%; display:flex; align-items:center;
+                        justify-content:center; font-weight:700; font-size:14px;">
+                {(user.get('full_name', 'U') or 'U')[0].upper()}
+            </div>
+            <div style="flex:1; min-width:0;">
+                <div style="font-weight:600; font-size:13px; color:#1F2937;">
+                    {user.get('full_name', '-')}
+                </div>
+                <div style="font-size:11px; color:#92400E;">
+                    👤 @{user.get('username', '-')} • บัญชีนี้ใช้งานครั้งแรก
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-            st.caption(
-                "📋 **กฎรหัสผ่าน:**\n"
-                "• ยาวอย่างน้อย 8 ตัวอักษร\n"
-                "• มีทั้งตัวอักษร และตัวเลข\n"
-                "• ห้ามเหมือน username\n"
-                "• ห้ามใช้รหัสที่อ่อนแอ (admin123, password)"
-            )
+        with st.container(border=True):
+            with st.form("force_pwd_form"):
+                new_pwd = st.text_input(
+                    "รหัสผ่านใหม่ *",
+                    type="password",
+                    placeholder="อย่างน้อย 8 ตัว มีตัวอักษร + ตัวเลข",
+                )
+                confirm_pwd = st.text_input(
+                    "ยืนยันรหัสผ่านใหม่ *",
+                    type="password",
+                    placeholder="พิมพ์ซ้ำเพื่อยืนยัน",
+                )
 
-            if st.form_submit_button("✅ เปลี่ยนรหัสผ่าน", type="primary",
-                                        use_container_width=True):
-                if not new_pwd or not confirm_pwd:
-                    st.error("❌ กรุณากรอกครบทั้ง 2 ช่อง")
-                elif new_pwd != confirm_pwd:
-                    st.error("❌ รหัสผ่านยืนยันไม่ตรงกัน")
-                else:
-                    ok, msg = db.validate_password(new_pwd, user.get('username', ''))
-                    if not ok:
-                        st.error(f"❌ {msg}")
+                st.caption(
+                    "📋 **กฎรหัสผ่าน:**\n"
+                    "• ยาวอย่างน้อย 8 ตัวอักษร\n"
+                    "• มีทั้งตัวอักษร และตัวเลข\n"
+                    "• ห้ามเหมือน username\n"
+                    "• ห้ามใช้รหัสที่อ่อนแอ (admin123, password)"
+                )
+
+                if st.form_submit_button("🔒 ตั้งรหัสผ่านใหม่",
+                                            type="primary",
+                                            use_container_width=True):
+                    if not new_pwd or not confirm_pwd:
+                        st.error("❌ กรุณากรอกครบทั้ง 2 ช่อง")
+                    elif new_pwd != confirm_pwd:
+                        st.error("❌ รหัสผ่านยืนยันไม่ตรงกัน")
                     else:
-                        success = db.update_user(user['id'], password=new_pwd)
-                        if success:
-                            st.session_state['user']['must_change_password'] = False
-                            st.success("✅ เปลี่ยนรหัสสำเร็จ! กำลังเข้าสู่ระบบ...")
-                            st.rerun()
+                        ok, msg = db.validate_password(
+                            new_pwd, user.get('username', '')
+                        )
+                        if not ok:
+                            st.error(f"❌ {msg}")
+                        else:
+                            # user เปลี่ยนเอง → ไม่ต้อง force อีก
+                            success = db.update_user(
+                                user['id'],
+                                password=new_pwd,
+                                force_change_password=False,
+                            )
+                            if success:
+                                st.session_state['user']['must_change_password'] = False
+                                st.toast(
+                                    "🎉 ตั้งรหัสผ่านสำเร็จ!", icon="✅"
+                                )
+                                st.balloons()
+                                st.success(
+                                    "✅ **เปลี่ยนรหัสผ่านสำเร็จ!**\n\n"
+                                    "กำลังเข้าสู่ระบบ..."
+                                )
+                                import time
+                                time.sleep(1.5)
+                                st.rerun()
+                            else:
+                                st.error("❌ บันทึกไม่สำเร็จ — ลองใหม่อีกครั้ง")
 
 
 def main():

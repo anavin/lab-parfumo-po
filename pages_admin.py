@@ -901,14 +901,37 @@ def render_users():
                         ac = st.checkbox("ใช้งาน", value=u.get('is_active', True))
                     with c2:
                         em = st.text_input("อีเมล", value=u.get('email') or '')
-                        np_ = st.text_input("เปลี่ยนรหัส (เว้นว่าง=ไม่เปลี่ยน)", type="password")
+                        np_ = st.text_input(
+                            "เปลี่ยนรหัส (เว้นว่าง=ไม่เปลี่ยน)",
+                            type="password",
+                            help="เมื่อตั้งรหัสใหม่ user จะถูกบังคับให้เปลี่ยนรหัสครั้งถัดไปที่ login",
+                        )
+                        # แสดง status ปัจจุบัน
+                        if u.get('must_change_password'):
+                            st.caption("⚠️ User นี้ยังไม่เคยเปลี่ยนรหัสเอง")
                     s1, s2 = st.columns(2)
                     with s1:
                         if st.form_submit_button("💾", type="primary"):
                             ud = {'full_name': n, 'role': rl, 'is_active': ac, 'email': em}
                             if np_:
                                 ud['password'] = np_
-                            db.update_user(u['id'], **ud)
+                                # admin reset → บังคับ user เปลี่ยนเองครั้งถัดไป
+                                ud['force_change_password'] = True
+                            if db.update_user(u['id'], **ud):
+                                if np_:
+                                    st.toast(
+                                        f"🔐 รีเซ็ตรหัสผ่านของ {u['username']} แล้ว",
+                                        icon="✅",
+                                    )
+                                    st.success(
+                                        f"✅ **บันทึกสำเร็จ** — "
+                                        f"ครั้งหน้า {u['username']} login จะถูกบังคับ"
+                                        f"ให้เปลี่ยนรหัสใหม่เอง"
+                                    )
+                                else:
+                                    st.toast("✅ บันทึกแล้ว", icon="💾")
+                                import time
+                                time.sleep(1.5)
                             del st.session_state[f'edu_{u["id"]}']
                             st.rerun()
                     with s2:
